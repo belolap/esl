@@ -49,6 +49,12 @@ coverage.xml
 *.mo
 *.pot
 
+# VIM's swap files
+*.swp
+
+# Parse tab file
+parsetab.py
+
 # Django stuff:
 *.log
 local_settings.py
