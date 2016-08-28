@@ -143,14 +143,16 @@ class Parser(lex.Lexer):
     # Special if statement
     def p_special_if_statement1(self, p):
         '''
-        special_if_statement : expression IF LPAREN conditional_expression RPAREN SEMICOLON
+        special_if_statement : assignment_expression IF LPAREN conditional_expression RPAREN SEMICOLON
+                        | expression IF LPAREN conditional_expression RPAREN SEMICOLON
         '''
         p[0] = interpreter.SpecialIfStatement(p.lineno(0), p[1], p[4])
 
     # Unless statement
     def p_unless_statement1(self, p):
         '''
-        unless_statement : expression UNLESS LPAREN conditional_expression RPAREN SEMICOLON
+        unless_statement : assignment_expression UNLESS LPAREN conditional_expression RPAREN SEMICOLON
+                        | expression UNLESS LPAREN conditional_expression RPAREN SEMICOLON
         '''
         p[0] = interpreter.UnlessStatement(p.lineno(0), p[1], p[4])
 

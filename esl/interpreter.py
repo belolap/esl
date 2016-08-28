@@ -280,19 +280,15 @@ class ElseStatement(Node):
 class SpecialIfStatement(Node):
 
     def __init__(self, lineno, expression, if_expression):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.expression = expression
         self.if_expression = if_expression
 
-    def __str__(self):
-        return '%s if (%s);' % (str(self.expression), str(self.if_expression))
-
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
         result = None
-        if bool(self.if_expression.touch(ctx)):
-            result = self.expression.touch(ctx)
+        if bool(await self.if_expression.touch(ctx)):
+            result = await self.expression.touch(ctx)
         ctx.line_stack.pop()
         return result
 
@@ -300,19 +296,15 @@ class SpecialIfStatement(Node):
 class UnlessStatement(Node):
 
     def __init__(self, lineno, expression, if_expression):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.expression = expression
         self.if_expression = if_expression
 
-    def __str__(self):
-        return '%s unless (%s);' % (str(self.expression), str(self.if_expression))
-
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
         result = None
-        if not bool(self.if_expression.touch(ctx)):
-            result = self.expression.touch(ctx)
+        if not bool(await self.if_expression.touch(ctx)):
+            result = await self.expression.touch(ctx)
         ctx.line_stack.pop()
         return result
 
