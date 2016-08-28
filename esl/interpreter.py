@@ -347,7 +347,6 @@ class ForStatement(Node):
 class ForInStatement(Node):
 
     def __init__(self, lineno, id, expression, compound_statement):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.id = id
         self.expression = expression
@@ -355,25 +354,19 @@ class ForInStatement(Node):
         self.must_break = False
         self.must_continue = False
 
-    def __str__(self):
-        return 'for (%s in %s) %s' % (self.id, self.expression, self.compound_statement)
-
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
         ctx.loops.append(self)
-        for element in self.expression.touch(ctx):
+        for element in await self.expression.touch(ctx):
             self.must_continue = False
-            if not ctx.has_key(self.id.name):
-                ctx.addLocal(self.id.name, element)
-            else:
-                ctx.set(self.id.name, element)
+            ctx.set(self.id.name, element)
             for statement in self.compound_statement.translation_unit.children:
-                statement.touch(ctx)
+                await statement.touch(ctx)
                 if self.must_break or self.must_continue:
                     break
             if self.must_break:
                 break
-        del ctx.loops[-1]
+        ctx.loops.pop()
         ctx.line_stack.pop()
 
 
