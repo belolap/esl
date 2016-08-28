@@ -159,7 +159,7 @@ class Parser(lex.Lexer):
     # For statement
     def p_for_statement1(self, p):
         '''
-        for_statement : FOR LPAREN single_id_assignment_expression SEMICOLON expression SEMICOLON expression RPAREN compound_statement
+        for_statement : FOR LPAREN single_id_assignment_expression SEMICOLON expression SEMICOLON increment_expression RPAREN compound_statement
         '''
         p[0] = interpreter.ForStatement(p.lineno(0), p[3], p[5], p[7], p[9])
 

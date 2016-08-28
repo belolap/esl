@@ -312,7 +312,6 @@ class UnlessStatement(Node):
 class ForStatement(Node):
 
     def __init__(self, lineno, init_expression, relative_expression, increment_expression, compound_statement):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.init_expression = init_expression
         self.relative_expression = relative_expression
@@ -320,9 +319,6 @@ class ForStatement(Node):
         self.compound_statement = compound_statement
         self.must_break = False
         self.must_continue = False
-
-    def __str__(self):
-        return 'for (%s; %s; %s) %s' % (self.init_expression, self.relative_expression, self.increment_expression, self.compound_statement)
 
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
@@ -332,19 +328,19 @@ class ForStatement(Node):
 
         ctx.loops.append(self)
 
-        init.touch(ctx)
+        await init.touch(ctx)
 
-        while bool(relative.touch(ctx)):
+        while bool(await relative.touch(ctx)):
             self.must_continue = False
             for statement in self.compound_statement.translation_unit.children:
-                statement.touch(ctx)
+                await statement.touch(ctx)
                 if self.must_break or self.must_continue:
                     break
             if self.must_break:
                 break
-            increment.touch(ctx)
+            await increment.touch(ctx)
 
-        del ctx.loops[-1]
+        ctx.loops.pop()
         ctx.line_stack.pop()
 
 
@@ -413,23 +409,20 @@ class WhileStatement(Node):
 class LoopCommandStatement(Node):
 
     def __init__(self, lineno, command):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.command = command
-
-    def __str__(self):
-        return '%s' % self.command
 
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
         if len(ctx.loops) < 1:
-            raise RuntimeError('`%s\' statement without loop.' % self.command)
+            raise RuntimeError('{} statement without loop'.format(self.command))
         if self.command == 'break':
             ctx.loops[-1].must_break = True
         elif self.command == 'continue':
             ctx.loops[-1].must_continue = True
         else:
-            raise RuntimeError('unknown loop command `%s\'.' % type(self.command))
+            raise RuntimeError(
+                    'unknown loop command {}'.format(type(self.command)))
         ctx.line_stack.pop()
 
 
