@@ -1,31 +1,34 @@
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(C) 2010 Business group of development management'
-__licence__ = 'GPL'
+__copyright__ = '(c) 2016 Business group for development management'
+__licence__ = 'For license information see LICENSE'
 
-from ply.lex import lex
+import ply.lex
 
-class ESLLex(object):
 
-    reserved = (
-        'TRUE',
-        'FALSE',
-        'NULL',
-        'NOT',
-        'AND',
-        'OR',
-        'IF',
-        'ELIF',
-        'ELSE',
-        'UNLESS',
-        'FOR',
-        'IN',
-        'WHILE',
-        'CONTINUE',
-        'BREAK',
-        'FUNCTION',
-        'RETURN',
-        'IMPORT',
-        )
+class SyntaxError(Exception):
+    pass
+
+
+class Lexer(object):
+
+    reserved = ('TRUE',
+                'FALSE',
+                'NULL',
+                'NOT',
+                'AND',
+                'OR',
+                'IF',
+                'ELIF',
+                'ELSE',
+                'UNLESS',
+                'FOR',
+                'IN',
+                'WHILE',
+                'CONTINUE',
+                'BREAK',
+                'FUNCTION',
+                'RETURN',
+                'IMPORT')
     reserved_words = {}
     for k in reserved:
         reserved_words[k.lower()] = k
@@ -75,9 +78,12 @@ class ESLLex(object):
                 'ID',
                 'INTEGER',
                 'DECIMAL',
-                'STRING',
+                'STRING')
 
-            )
+    precedence = (
+        ('left', 'PLUS', 'MINUS'),
+        ('left', 'TIMES', 'DIVIDE'),
+    )
 
     # Characters . , : ;
     t_DOT           = r'\.'
@@ -93,10 +99,10 @@ class ESLLex(object):
     t_LBRACE        = r'\{'
     t_RBRACE        = r'\}'
 
-        # Assigment: =
+    # Assigment: =
     t_ASSIGN        = r'='
 
-        # Comparsion: > < == != >= <=
+    # Comparsion: > < == != >= <=
     t_GREATER       = r'>'
     t_LESS          = r'<'
     t_EQUAL         = r'=='
@@ -120,14 +126,14 @@ class ESLLex(object):
 
     # Others
     def t_ID(self, t):
-        r'[A-Za-z_][\w_]*'
+        r'[A-Za-z][\w_]*'
         if t.value in self.reserved_words:
             t.type = self.reserved_words[t.value]
         return t
 
     t_INTEGER       = r'\d+'
     t_DECIMAL       = r'\d*\.\d+'
-    t_STRING        = r'".*?"'
+    t_STRING        = r'".*?"|\'.*?\''
 
     # Ignored symbols
     t_ignore  = ' \t'
@@ -148,7 +154,8 @@ class ESLLex(object):
 
     # Errors handle
     def error_msg(self, msg, line, pos, value):
-        return '%s at line %s, position %s, statement `%s\'.' % (msg, line, pos, value)
+        return '{} at line {}, position {}, statement `{}\''.format(
+                                                        msg, line, pos, value)
 
     def t_error(self, t):
         startpos = getattr(t.lexer, 'startpos', 1)
@@ -158,4 +165,4 @@ class ESLLex(object):
 
     # Build lexer
     def build(self):
-        self.lexer = lex(module=self)
+        self.lexer = ply.lex.lex(module=self)

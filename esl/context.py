@@ -1,74 +1,75 @@
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(C) 2010 Business group of development management'
-__licence__ = 'GPL'
+__copyright__ = '(c) 2016 Business group for development management'
+__licence__ = 'For license information see LICENSE'
+
+import collections
+
+
+class Variables(collections.MutableMapping):
+
+    def __init__(self, initial=None):
+        self.__values = {'__builtins__': {}}
+        if initial is not None:
+            assert isinstance(initial, dict)
+            for k, v in initial.items():
+                if not k.startswith('_'):
+                    self.__values[k] = v
+
+    def __getitem__(self, key):
+        return self.__values[key]
+
+    def __setitem__(self, key, value):
+        if key.startswith('_'):
+            raise KeyError('key mustn\'t starts with _')
+        self.__values[key] = value
+
+    def __delitem__(self, key):
+        del self.__values[key]
+
+    def __iter__(self):
+        for key in self.__values:
+            yield key
+
+    def __len__(self):
+        return len(self.__values)
 
 
 class Context(object):
-    def __init__(self, globals_dict={}, locals_dict={}):
-        self.__globals = dict(globals_dict)
-        self.__locals = dict(locals_dict)
+
+    def __init__(self, globals_dict=None, locals_dict=None,
+                 import_handler=None):
+        self.__globals = Variables(globals_dict)
+        self.__locals = Variables(locals_dict)
+
+        self.import_handler = import_handler
+
         self.line_stack = []
         self.call_stack = []
         self.loops = []
         self.must_return = False
-        self.import_handler = None
 
     def get(self, key):
-        if not isinstance(key, str):
-            raise TypeError('параметр `key\' должен быть строкой, '
-                            'а не типом `{}\''.format(type(key)))
-        if key in self.__globals:
-            return self.__globals[key]
-        elif key in self.__locals:
+        assert isinstance(key, str)
+        if key in self.__locals:
             return self.__locals[key]
+        elif key in self.__globals:
+            return self.__globals[key]
         raise NameError('key `%s\' is not defined.' % key)
 
     def set(self, key, value):
-        if not isinstance(key, str):
-            raise TypeError('параметр `key\' должен быть строкой, '
-                            'а не типом `{}\''.format(type(key)))
-        if key in self.__globals:
-            self.__globals[key] = value
-        elif key in self.__locals:
-            self.__locals[key] = value
-        else:
-            raise NameError('key `%s\' is not defined.' % key)
-
-    def getGlobals(self):
-        return self.__globals
-
-    def getLocals(self):
-        return self.__locals
-
-    def addGlobal(self, key, value):
-        if not isinstance(key, str):
-            raise TypeError('параметр `key\' должен быть строкой, '
-                            'а не типом `{}\''.format(type(key)))
-        if key in self.__globals:
-            raise KeyError('globals already have key `%s\'.' % key)
-        self.__globals[key] = value
-
-    def addLocal(self, key, value):
-        if not isinstance(key, str):
-            raise TypeError('параметр `key\' должен быть строкой, '
-                            'а не типом `{}\''.format(type(key)))
-        if key in self.__locals:
-            raise KeyError('locals already have key `%s\'.' % key)
+        assert isinstance(key, str)
         self.__locals[key] = value
 
     def has_key(self, key):
-        if not isinstance(key, str):
-            raise TypeError('параметр `key\' должен быть строкой, '
-                            'а не типом `{}\''.format(type(key)))
-        if key in self.__globals:
+        assert isinstance(key, str)
+        if key in self.__locals:
             return True
-        return key in self.__locals
+        return key in self.__globals
 
-    def push_line(self, lineno):
-        self.line_stack.append(lineno)
+    @property
+    def globals(self):
+        return dict(self.__globals)
 
-    def pop_line(self):
-        del self.line_stack[-1]
-
-    def setImportHandler(self, handler):
-        self.import_handler = handler
+    @property
+    def locals(self):
+        return self.__locals
