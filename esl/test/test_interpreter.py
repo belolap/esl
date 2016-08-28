@@ -148,10 +148,6 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         yield self.assert_code(False, '6 <= 5;')
         yield self.assert_code(False, '5 < 5;')
 
-
-    # --------------------------------- not ready
-
-
     @tornado.testing.gen_test
     def test_if_statement(self):
         '''ESL: interpretate if-elif-else statement'''
@@ -200,6 +196,8 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         '''
         yield self.assert_code(4, code)
 
+
+    # --------------------------------- not ready
     @tornado.testing.gen_test
     def test_special_if_and_unless(self):
         '''ESL: interpretate special if and unless'''

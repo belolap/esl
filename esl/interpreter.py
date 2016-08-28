@@ -238,37 +238,28 @@ class Return(Node):
 class IfStatement(NodeList):
 
     def __init__(self, lineno, if_expression, compound_statement, elif_statement, else_statement):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.if_expression = if_expression
         self.compound_statement = compound_statement
         self.elif_statement = elif_statement
         self.else_statement = else_statement
 
-    def __str__(self):
-        return 'if (%s) %s%s%s' % (
-                str(self.if_expression),
-                str(self.compound_statement),
-                self.elif_statement != None and ' ' + str(self.elif_statement) or '',
-                self.else_statement != None and ' ' + str(self.else_statement) or '',
-                )
-
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
-        if bool(self.if_expression.touch(ctx)):
-            result = self.compound_statement.touch(ctx)
+        if bool(await self.if_expression.touch(ctx)):
+            result = await self.compound_statement.touch(ctx)
             ctx.line_stack.pop()
             return result
         else:
             if self.elif_statement is not None:
                 for expression, statement in self.elif_statement.children:
-                    if bool(expression.touch(ctx)):
-                        result = statement.touch(ctx)
+                    if bool(await expression.touch(ctx)):
+                        result = await statement.touch(ctx)
                         ctx.line_stack.pop()
                         return result
 
             if self.else_statement is not None:
-                result = self.else_statement.compound_statement.touch(ctx)
+                result = await self.else_statement.compound_statement.touch(ctx)
                 ctx.line_stack.pop()
                 return result
 
@@ -276,22 +267,14 @@ class IfStatement(NodeList):
 class ElIfStatement(NodeList):
 
     def __init__(self, lineno):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
-
-    def __str__(self):
-        return ' '.join ([ 'elif (%s) %s' % (str(x[0]), str(x[1])) for x in self.children ])
 
 
 class ElseStatement(Node):
 
     def __init__(self, lineno, compound_statement):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.compound_statement = compound_statement
-
-    def __str__(self):
-        return 'else %s' % str(self.compound_statement)
 
 
 class SpecialIfStatement(Node):
@@ -461,16 +444,12 @@ class LoopCommandStatement(Node):
 class CompoundStatement(Node):
 
     def __init__(self, lineno, translation_unit):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.translation_unit = translation_unit
 
-    def __str__(self):
-        return '{%s}' % str(self.translation_unit)
-
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
-        result = self.translation_unit.touch(ctx)
+        result = await self.translation_unit.touch(ctx)
         ctx.line_stack.pop()
         return result
 
