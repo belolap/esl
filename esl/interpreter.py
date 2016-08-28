@@ -16,6 +16,7 @@ __all__ = ['Interpreter',
            'UnlessStatement', 'WhileStatement']
 
 import sys
+import inspect
 import logging
 import traceback
 import collections
@@ -127,33 +128,30 @@ class ImportStatement(Node):
 class FunctionObject(object):
 
     def __init__(self, name, parameters, compound_statement):
-        raise NotImplementedError('for revision')
         self.name = name
         self.parameters = parameters
         self.compound_statement = compound_statement
 
-    def __call__(self, ctx, *params, **named):
-        # create new globals
-        new_globals = ctx.getGlobals().copy()
-        new_globals.update(ctx.getLocals())
+    async def touch(self, ctx, *args, **kwargs):
+        # Set up globals & locals
+        globals = ctx.globals
+        locals = context.Variables(ctx.locals)
 
-        # create new locals
-        new_locals = {}
-        parameters = list(self.parameters)
-        for i in range(0, len(params)):
+        parameters = list(self.parameters).copy()
+        for i in range(0, len(args)):
             try:
                 key = parameters.pop(0)
             except IndexError:
-                raise TypeError(
+                raise RuntimeError(
                         'function take a {} parameters, but {} given'.format(
-                            len(self.parameters), len(params) + len(named)))
-            new_locals[key] = params[i]
+                            len(self.parameters), len(args) + len(kwargs)))
+            locals[key] = await args[i].touch(ctx)
 
-        for key in named:
+        for key in kwargs:
             if self.parameters.count(key):
-                if key in new_locals:
-                    raise TypeError('parameter {} passed twiste'.format(key))
-                new_locals[key] = named[key]
+                if key in locals:
+                    raise RuntimeError('parameter {} passed twiste'.format(key))
+                locals[key] = await kwargs[key].touch(ctx)
                 parameters.pop(parameters.index(key))
             else:
                 raise TypeError('parameter {} not defined '
@@ -162,12 +160,11 @@ class FunctionObject(object):
         if len(parameters):
             raise TypeError(
                     'function take a {} parameters, but {} given'.format(
-                        len(self.parameters), len(params) + len(named)))
+                        len(self.parameters), len(args) + len(kwargs)))
 
-        # create new context
-        new_ctx = context.Context(new_globals, new_locals)
+        new_ctx = context.Context(globals, locals)
 
-        return self.compound_statement.touch(new_ctx)
+        return await self.compound_statement.touch(new_ctx)
 
     def __repr__(self):
         return '<{} {} at {}>'.format(self.__class__.__name__,
@@ -178,21 +175,14 @@ class FunctionObject(object):
 class FunctionStatement(Node):
 
     def __init__(self, lineno, id, declaration, compound_statement):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.id = id
         self.declaration = declaration
         self.compound_statement = compound_statement
 
-    def __str__(self):
-        if self.declaration is None:
-            declaration = ''
-        else:
-            declaration = str(self.declaration)
-        return 'function %s (%s) %s' % (str(self.id), declaration, str(self.compound_statement))
-
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
+
         name = self.id.name
         if self.declaration is not None:
             declarations = self.declaration.children
@@ -200,37 +190,27 @@ class FunctionStatement(Node):
             declarations = []
         parameters = list(map(lambda x: x.name, declarations))
         fun = FunctionObject(name, parameters, self.compound_statement)
-        if ctx.has_key(name):
-            ctx.set(name, fun)
-        else:
-            ctx.addLocal(name, fun)
+        ctx.set(name, fun)
+
         ctx.line_stack.pop()
 
 
 class Declaration(NodeList):
 
     def __init__(self, lineno):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
-
-    def __str__(self):
-        return ', '.join([str(x) for x in self.children])
 
 
 class Return(Node):
 
     def __init__(self, lineno, expression):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.expression = expression
-
-    def __str__(self):
-        return 'return %s' % str(self.expression)
 
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
         ctx.must_return = True
-        result = self.expression.touch(ctx)
+        result = await self.expression.touch(ctx)
         ctx.line_stack.pop()
         return result
 
@@ -558,17 +538,9 @@ class BinaryExpression(Node):
 class Call(Node):
 
     def __init__(self, lineno, attribute, parameters):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.attribute = attribute
         self.parameters = parameters
-
-    def __str__(self):
-        if self.parameters is None:
-            parameters = ''
-        else:
-            parameters = str(self.parameters)
-        return '%s(%s)' % (str(self.attribute), parameters)
 
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
@@ -578,53 +550,55 @@ class Call(Node):
         else:
             parameters = self.parameters
 
-        # compile parameters
-        params = ()
-        named = {}
+        # Compile parameters
+        args = ()
+        kwargs = {}
 
         first_named_param = None
         try:
-            first_named_param = list(map(lambda x: type(x), parameters)).index(VariableAssignment)
+            first_named_param = list(map(lambda x: type(x), parameters)) \
+                                            .index(VariableAssignment)
         except ValueError:
             pass
 
         if first_named_param is None:
-            params = tuple(parameters)
+            args = tuple(parameters)
         else:
-            params = tuple(parameters[0:first_named_param])
+            args = tuple(parameters[0:first_named_param])
             for param in parameters[first_named_param:]:
                 if isinstance(param, VariableAssignment):
-                    named[param.key.id.name] = param.expression
+                    kwargs[param.variable.name] = param.expression
                 else:
-                    raise TypeError('can\'t use unnamed parameter after named.')
+                    raise RuntimeError(
+                            'can\'t use unnamed parameter after kwargs')
 
-        # find function and create namespaces
-        fun = self.attribute.touch(ctx)
+        # Find function and create namespaces
+        fun = await self.attribute.touch(ctx)
 
-        # call function
+        # Append element to stack
+        ctx.call_stack.append((self.attribute.eval(), self.lineno))
+
         if isinstance(fun, FunctionObject):
-            # append element to stack
-            ctx.call_stack.append((str(self.attribute), self.lineno))
-
-            # call
-            result = fun.__call__(ctx, *params, **named)
-
-            # del last element from stack
-            del ctx.call_stack[-1]
+            result = await fun.touch(ctx, *args, **kwargs)
 
         else:
-            # touch all params for python
-            e_params = tuple(map(lambda x: x.touch(ctx), params))
-            e_named = {}
-            for key in named:
-                e_named[str(key)] = named[key].touch(ctx)
+            params = []
+            params.append(', '.join([x.eval() for x in args]))
+            params.append(', '.join(['{}={}'.format(k, v.eval())
+                                                        for x in kwargs]))
+            code = '{}({})'.format(self.attribute.eval(),
+                                   ', '.join(x for x in params if x))
+            result = eval(code, ctx.globals, ctx.locals)
 
-            # call
-            result = fun.__call__(*e_params, **e_named)
+        # Call coroutine
+        if inspect.iscoroutine(result):
+            result = await result
 
-        # reset return flag
+        # Del last element from stack
+        ctx.call_stack.pop()
+
+        # Reset return flag
         ctx.must_return = False
-
 
         ctx.line_stack.pop()
         return result
@@ -633,11 +607,7 @@ class Call(Node):
 class CallElement(NodeList):
 
     def __init__(self, lineno):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
-
-    def __str__(self):
-        return ', '.join([str(x) for x in self.children])
 
 
 class Hash(Node):

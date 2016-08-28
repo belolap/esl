@@ -10,7 +10,7 @@ class Variables(collections.MutableMapping):
     def __init__(self, initial=None):
         self.__values = {'__builtins__': {}}
         if initial is not None:
-            assert isinstance(initial, dict)
+            assert isinstance(initial, (dict, Variables))
             for k, v in initial.items():
                 if not k.startswith('_'):
                     self.__values[k] = v

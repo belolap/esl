@@ -358,15 +358,19 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
                 return a + b + c + d;
             }
         '''
-        yield self.assert_code(10,
-                funcode + 'summishe(1, 5, 3, 1);')
+        yield self.assert_code(10, funcode + 'summishe(1, 5, 3, 1);')
 
         def func(a, b):
             return a + b
 
         ctx = context.Context({'func': func})
-        bytecode = self.parser.parse('return func(1, 3);')
-        yield self.assert_code(bytecode.touch(ctx), 4)
+        yield self.assert_code(4, 'return func(1, 3);', ctx)
+
+        async def func(a, b):
+            return a - b
+
+        ctx = context.Context({'func': func})
+        yield self.assert_code(7, 'return func(12, 5);', ctx)
 
     @tornado.testing.gen_test
     def test_function_parameters(self):
