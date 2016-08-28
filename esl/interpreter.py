@@ -373,29 +373,25 @@ class ForInStatement(Node):
 class WhileStatement(Node):
 
     def __init__(self, lineno, expression, compound_statement):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.expression = expression
         self.compound_statement = compound_statement
         self.must_break = False
         self.must_continue = False
 
-    def __str__(self):
-        return 'while (%s) %s' % (self.expression, self.compound_statement)
-
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
         ctx.loops.append(self)
 
-        while bool(self.expression.touch(ctx)):
+        while bool(await self.expression.touch(ctx)):
             self.must_continue = False
             for statement in self.compound_statement.translation_unit.children:
-                statement.touch(ctx)
+                await statement.touch(ctx)
                 if self.must_break or self.must_continue:
                     break
             if self.must_break:
                 break
-        del ctx.loops[-1]
+        ctx.loops.pop()
         ctx.line_stack.pop()
 
 
