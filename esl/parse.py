@@ -381,15 +381,23 @@ class Parser(lex.Lexer):
     def p_call_element1(self, p):
         '''
         call_element : expression
+                    | id ASSIGN expression
         '''
         p[0] = interpreter.CallElement(p.lineno(0))
-        p[0].add(p[1])
+        if len(p) == 2:
+            p[0].add(p[1])
+        else:
+            p[0].add(interpreter.VariableAssignment(p.lineno(0), p[1], p[3]))
 
     def p_call_element2(self, p):
         '''
         call_element : call_element COMMA expression
+                    | call_element COMMA id ASSIGN expression
         '''
-        p[1].add(p[3])
+        if len(p) == 4:
+            p[1].add(p[3])
+        else:
+            p[1].add(interpreter.VariableAssignment(p.lineno(0), p[3], p[5]))
         p[0] = p[1]
 
     # Array
@@ -424,7 +432,7 @@ class Parser(lex.Lexer):
         '''
         hash : LBRACE RBRACE
         '''
-        p[0] = interpreter.Hash(p.lineno(0), p[2])
+        p[0] = interpreter.Hash(p.lineno(0))
 
     def p_hash2(self, p):
         '''

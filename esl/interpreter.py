@@ -88,9 +88,6 @@ class TranslationUnit(NodeList):
         super().__init__(lineno)
         self.add(node)
 
-    def pretty(self):
-        return ' '.join([x.pretty() for x in self.children])
-
     async def touch(self, ctx):
         ctx.line_stack.append(self.lineno)
         for statement in self.children:
@@ -109,20 +106,19 @@ class TranslationUnit(NodeList):
 class ImportStatement(Node):
 
     def __init__(self, parser, lineno, id):
-        raise NotImplementedError('for revision')
         super().__init__(lineno)
         self.parser = parser
         self.id = id
 
-    def __str__(self):
-        return 'import %s;' % self.id
-
     async def touch(self, ctx):
+        ctx.line_stack.append(self.lineno)
         if ctx.import_handler is None:
             raise RuntimeError('please setup import handler')
-        code = ctx.import_handler(self.id.name)
+        code = ctx.import_handler(self.id.eval())
         bytecode = self.parser.parse(code)
-        return bytecode.touch(ctx)
+        result = await bytecode.touch(ctx)
+        ctx.line_stack.pop()
+        return result
 
 
 class FunctionObject(object):
@@ -612,7 +608,7 @@ class CallElement(NodeList):
 
 class Hash(Node):
 
-    def __init__(self, lineno, element):
+    def __init__(self, lineno, element=None):
         super().__init__(lineno)
         self.element = element
 

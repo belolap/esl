@@ -113,10 +113,12 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         yield self.assert_code(2, 'a = {"a": 1, "b": 2, 3: 3}; a["b"];')
         yield self.assert_code(4, 'a = {"a": 1}; a["a"] = 4; a["a"];')
         yield self.assert_code(4, 'a = [9,8,7,6]; a[1+2] = 4; a[3];')
+        yield self.assert_code(interpreter.AttrDict(), '{};')
+        yield self.assert_code([], '[];')
 
     @tornado.testing.gen_test
     def test_increment_assignment(self):
-        '''ESL: increment assignment'''
+        '''ESL: interpretate increment assignment'''
         yield self.assert_raises(interpreter.RuntimeError,'a += 1;')
         yield self.assert_code(11, 'a = 5; a += 6; a;')
         yield self.assert_code(-1, 'a = 5; a -= 6; a;')
@@ -462,16 +464,6 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         yield self.assert_code(1, code)
 
     @tornado.testing.gen_test
-    def test_empty_braces(self):
-        '''ESL: interpretate empty braces'''
-        code = '''{}'''
-        yield self.assert_raises(parse.SyntaxError,
-                code)
-        code = '''{a = 1;}'''
-        yield self.assert_raises(parse.SyntaxError,
-                code)
-
-    @tornado.testing.gen_test
     def test_import(self):
         '''ESL: interpretate import module'''
         def return_imported(code):
@@ -482,9 +474,8 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         code = '''\
             a = 1;
             import change;
-            return a;
+            a;
         '''
         ctx = context.Context()
-        ctx.setImportHandler(return_imported)
-        bytecode = self.parser.parse(code)
-        yield self.assert_code(5, bytecode.touch(ctx))
+        ctx.import_handler = return_imported
+        yield self.assert_code(5, code, ctx)
