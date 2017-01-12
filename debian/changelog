@@ -1,5 +1,5 @@
-esl (0.0.1) UNRELEASED; urgency=medium
+esl (0.0.1) unstable; urgency=medium
 
-  * Development release.
+  * First release.
 
- -- Gennady Kovalev <gik@bigur.ru>  Thu, 12 Jan 2017 16:42:19 +0300
+ -- Gennady Kovalev <gik@bigur.ru>  Thu, 12 Jan 2017 22:46:29 +0000
