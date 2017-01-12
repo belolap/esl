@@ -6,7 +6,7 @@ from setuptools import setup
 setup(name='esl',
       version='0.0.1',
       author='Gennady Kovalev <gik@bigur.ru>',
-      description='Simple scripting language to use with python 3',
+      description='Simple scripting language to use with Python 3',
       long_description=open('README.md').read(),
       license='LICENSE',
       keywords='python python3 script scripting language javascript lua',
