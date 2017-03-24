@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
 __copyright__ = '(c) 2016 Business group for development management'
 __licence__ = 'For license information see LICENSE'
@@ -115,6 +117,18 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         yield self.assert_code(4, 'a = [9,8,7,6]; a[1+2] = 4; a[3];')
         yield self.assert_code(interpreter.AttrDict(), '{};')
         yield self.assert_code([], '[];')
+
+    @tornado.testing.gen_test
+    def test_dot_array(self):
+        '''ESL: interpretate dot after array access'''
+        code = ('a = {"a": 1};'
+                'b = {"a": a, "b": 7};'
+                'c = {"b": b};')
+
+        yield self.assert_code(7, code + 'c["b"].b;')
+        yield self.assert_code(1, code + 'c["b"].a["a"];')
+        yield self.assert_code(7, code + 'c["b"]["b"];')
+        yield self.assert_code(1, code + 'c["b"]["a"]["a"];')
 
     @tornado.testing.gen_test
     def test_increment_assignment(self):

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
 __copyright__ = '(c) 2016 Business group for development management'
 __licence__ = 'For license information see LICENSE'
@@ -459,6 +461,12 @@ class Parser(lex.Lexer):
     # Array_access
     def p_array_access1(self, p):
         '''
+        array_access : array_access LBRACKET expression RBRACKET
+        '''
+        p[0] = interpreter.ArrayAccess(p.lineno(0), p[1], p[3])
+
+    def p_array_access2(self, p):
+        '''
         array_access : attribute LBRACKET expression RBRACKET
         '''
         p[0] = interpreter.ArrayAccess(p.lineno(0), p[1], p[3])
@@ -473,6 +481,12 @@ class Parser(lex.Lexer):
     def p_attribute2(self, p):
         '''
         attribute : attribute DOT id
+        '''
+        p[0] = interpreter.Attribute(p.lineno(0), p[1], p[3])
+
+    def p_attribute3(self, p):
+        '''
+        attribute : array_access DOT id
         '''
         p[0] = interpreter.Attribute(p.lineno(0), p[1], p[3])
 
