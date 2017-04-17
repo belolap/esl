@@ -4,7 +4,7 @@ from setuptools import setup
 
 
 setup(name='esl',
-      version='0.0.1',
+      version='0.0.2',
       author='Gennady Kovalev <gik@bigur.ru>',
       description='Simple scripting language to use with Python 3',
       long_description=open('README.md').read(),

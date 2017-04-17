@@ -1,3 +1,9 @@
+esl (0.0.2) unstable; urgency=medium
+
+  * Full async support with basic syntax.
+
+ -- Gennady Kovalev <gik@bigur.ru>  Mon, 17 Apr 2017 16:22:00 +0300
+
 esl (0.0.1) unstable; urgency=medium
 
   * First release.
