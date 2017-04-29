@@ -6,9 +6,10 @@ from setuptools import setup
 setup(name='esl',
       version='0.0.2',
       author='Gennady Kovalev <gik@bigur.ru>',
-      description='Simple scripting language to use with Python 3',
+      description='Scripting language with LUA syntax to embed into '
+                  'Python 3 async applications',
       long_description=open('README.md').read(),
       license='LICENSE',
-      keywords='python python3 script scripting language javascript lua',
+      keywords='python python3 script scripting language lua async embed',
       install_requires=["python3-ply"],
-      packages=['esl'])
+      packages=['esl', 'esl.extensions'])

@@ -1,21 +1,8 @@
 #!/usr/bin/env python3
 
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(c) 2016 Business group for development management'
+__copyright__ = '(c) 2016-2017 Business group for development management'
 __licence__ = 'For license information see LICENSE'
-
-__all__ = ['Interpreter',
-           'Id', 'Attribute', 'BasicType', 'StringType',
-           'Array', 'ArrayElement',
-           'VariableAssignment', 'ExpressionStatement', 'TranslationUnit',
-           'Hash', 'HashElement', 'ArrayAccess', 'BinaryExpression',
-           'RelationalExpression', 'IncrementExpression',
-           'LoopCommandStatement', 'CompoundStatement', 'ForStatement',
-           'IfStatement', 'ForInStatement', 'Declaration', 'Return',
-           'FunctionStatement', 'CallElement', 'Call', 'ElIfStatement',
-           'ElseStatement', 'ImportStatement', 'LogicalExpression',
-           'UnaryExpression', 'UnaryExpression', 'SpecialIfStatement',
-           'UnlessStatement', 'WhileStatement']
 
 import sys
 import inspect
@@ -23,494 +10,585 @@ import logging
 import traceback
 import collections
 
-from . import context
+import esl.parse
+import esl.namespace
+import esl.table
+import esl.function
+import esl.extensions
 
 
-logger = logging.getLogger('edera.esl.interpreter')
+logger = logging.getLogger('esl')
 
 
-# Exception
-class RuntimeError(Exception):
+class ESLSyntaxError(Exception):
     pass
 
 
-# Nodes
+class ESLRuntimeError(Exception):
+    pass
+
+
 class Node(object):
 
     def __init__(self, lineno):
         self.lineno = lineno
 
-    def eval(self):
-        raise NotImplementedError('method {}.eval() does not implemented '
-                                  'yet'.format(type(self).__name__))
+    def is_false(self, val):
+        return val in (None, False)
 
-    async def touch(self, ctx):
-        raise NotImplementedError('method {}.touch() does not implemented '
-                                  'yet'.format(type(self).__name__))
+    async def touch(self, interpreter, ns):
+        raise NotImplementedError('method must be overrided')
 
 
-class NodeList(Node):
+class ListNode(Node):
 
     def __init__(self, lineno):
-        self.children = []
         super().__init__(lineno)
-
-    def __getitem__(self, k):
-        return self.children[k]
-
-    def __setitem__(self, k, v):
-        self.children[k] = v
-
-    def add(self, node):
-        self.children.append(node)
-
-
-class AttrDict(collections.MutableMapping):
-
-    def __getitem__(self, key):
-        return self.__dict__.__getitem__(key)
-
-    def __setitem__(self, key, value):
-        return self.__dict__.__setitem__(key, value)
-
-    def __delitem__(self, key):
-        return self.__dict__.__delitem__(key, value)
+        self.children = []
 
     def __iter__(self):
-        for k in self.__dict__.keys():
-            yield k
+        return iter(self.children)
 
-    def __len__(self):
-        return self.__dict__.__len__()
+    def append(self, item):
+        self.children.append(item)
 
 
-class TranslationUnit(NodeList):
+class Chunk(Node):
 
-    def __init__(self, lineno, node):
+    def __init__(self, lineno, block):
         super().__init__(lineno)
-        self.add(node)
+        self.block = block
 
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        result = await self.block.touch(interpreter, ns)
+        interpreter.line_stack.pop()
+        return result
+
+
+class Block(ListNode):
+
+    def __init__(self, lineno):
+        super().__init__(lineno)
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+
+        ns = ns.clone()
+
+        result = None
         for statement in self.children:
-            if len(ctx.loops) > 0:
-                loop = ctx.loops[-1]
-                if loop.must_break or loop.must_continue:
-                    continue
-            result = await statement.touch(ctx)
-            if ctx.must_return:
-                ctx.line_stack.pop()
-                return result
-        ctx.line_stack.pop()
+            if interpreter.returning or interpreter.breaking:
+                break
+            if statement is not None:
+                result = await statement.touch(interpreter, ns)
+        interpreter.line_stack.pop()
         return result
 
 
-class ImportStatement(Node):
+class Statement(Node):
+    pass
 
-    def __init__(self, parser, lineno, id):
+
+class Assignment(Statement):
+
+    def __init__(self, lineno, left, value, local=False):
         super().__init__(lineno)
-        self.parser = parser
-        self.id = id
+        self.left = left # varlist | namelist
+        self.value = value # explist, XXX: check for None
+        self.local = local
 
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        if ctx.import_handler is None:
-            raise RuntimeError('please setup import handler')
-        code = ctx.import_handler(self.id.eval())
-        bytecode = self.parser.parse(code)
-        result = await bytecode.touch(ctx)
-        ctx.line_stack.pop()
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+
+        count = len(self.left.children)
+        if self.value is not None and len(self.value.children) != count:
+            raise ValueError('incorrect count of values')
+
+        values = []
+        for i in range(0, count):
+            if self.value is None:
+                values.append(None)
+            else:
+                values.append(
+                    await self.value.children[i].touch(interpreter, ns))
+
+        for i in range(0, count):
+            item = self.left.children[i]
+
+            name = await item.name.touch(interpreter, ns)
+
+            if isinstance(item, Variable):
+                if item.left is None:
+                    if ns.has_local(name):
+                        ns.set_local(name, values[i])
+                    else:
+                        ns.set_global(name, values[i])
+                else:
+                    obj = await item.left.touch(interpreter, ns)
+
+                    if item.proto == 'dict':
+                        ns.set_item(obj, name, values[i])
+                    elif item.proto == 'attr':
+                        ns.set_attribute(obj, name, values[i])
+                    else:
+                        raise AssertionError('unknow protocol')
+
+            elif isinstance(item, Name):
+                ns.set_local(name, values[i])
+
+            else:
+                raise NotImplementedError('unknown type {}'.format(type(item)))
+
+        interpreter.line_stack.pop()
+
+
+class While(Statement):
+
+    def __init__(self, lineno, expression, block, check_before=True):
+        super().__init__(lineno)
+        self.expression = expression
+        self.block = block
+        self.check_before = check_before
+
+    async def _check_expression(self, interpreter, ns):
+        result = await self.expression.touch(interpreter, ns)
+        if result is None or result is False:
+            return False
+        return True
+
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        interpreter.loop_stack.append(self)
+
+        result = None
+
+        i = 0
+        while i < 100:
+            i += 1
+            if self.check_before:
+                if not await self._check_expression(interpreter, ns):
+                    interpreter.breaking = True
+
+            if interpreter.breaking:
+                break
+
+            result = await self.block.touch(interpreter, ns)
+
+            if not self.check_before:
+                if not await self._check_expression(interpreter, ns):
+                    interpreter.breaking = True
+
+        interpreter.breaking = False
+
+        interpreter.loop_stack.pop()
+        interpreter.line_stack.pop()
+
         return result
 
 
-class FunctionObject(object):
+class If(Statement):
 
-    def __init__(self, name, parameters, compound_statement):
+    def __init__(self, lineno, expression, block, elseiflist, else_):
+        super().__init__(lineno)
+        self.expression = expression
+        self.block = block
+        self.elseiflist = elseiflist
+        self.else_ = else_
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+
+        passed = False
+        result = None
+
+        check = await self.expression.touch(interpreter, ns)
+        if not self.is_false(check):
+            result = await self.block.touch(interpreter, ns)
+            passed = True
+
+        if not passed:
+            for elseif in self.elseiflist:
+                check = await elseif.expression.touch(interpreter, ns)
+                if not self.is_false(check):
+                    result = await elseif.touch(interpreter, ns)
+                    passed = True
+                    break
+
+        if not passed and self.else_ is not None:
+            result = await self.else_.block.touch(interpreter, ns)
+
+        interpreter.line_stack.pop()
+        return result
+
+
+class NumericFor(Statement):
+
+    def __init__(self, lineno, name, start, limit, step, block):
+        super().__init__(lineno)
         self.name = name
-        self.parameters = parameters
-        self.compound_statement = compound_statement
+        self.start = start
+        self.limit = limit
+        self.step = step
+        self.block = block
 
-    async def touch(self, ctx, *args, **kwargs):
-        # Set up globals & locals
-        globals = ctx.globals
-        locals = context.Variables(ctx.locals)
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        interpreter.loop_stack.append(self)
 
-        parameters = list(self.parameters).copy()
-        for i in range(0, len(args)):
-            try:
-                key = parameters.pop(0)
-            except IndexError:
-                raise RuntimeError(
-                        'function take a {} parameters, but {} given'.format(
-                            len(self.parameters), len(args) + len(kwargs)))
-            locals[key] = await args[i].touch(ctx)
+        ns = ns.clone()
 
-        for key in kwargs:
-            if self.parameters.count(key):
-                if key in locals:
-                    raise RuntimeError('parameter {} passed twiste'.format(key))
-                locals[key] = await kwargs[key].touch(ctx)
-                parameters.pop(parameters.index(key))
-            else:
-                raise TypeError('parameter {} not defined '
-                                'in function'.format(key))
+        result = None
 
-        if len(parameters):
-            raise TypeError(
-                    'function take a {} parameters, but {} given'.format(
-                        len(self.parameters), len(args) + len(kwargs)))
+        name = self.name.name
+        start = await self.start.touch(interpreter, ns)
+        assert isinstance(start, int)
 
-        new_ctx = context.Context(globals, locals)
+        limit = await self.limit.touch(interpreter, ns)
+        assert isinstance(limit, int)
 
-        return await self.compound_statement.touch(new_ctx)
-
-    def __repr__(self):
-        return '<{} {} at {}>'.format(self.__class__.__name__,
-                                      self.name,
-                                      hex(id(self)))
-
-
-class FunctionStatement(Node):
-
-    def __init__(self, lineno, id, declaration, compound_statement):
-        super().__init__(lineno)
-        self.id = id
-        self.declaration = declaration
-        self.compound_statement = compound_statement
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-
-        name = self.id.name
-        if self.declaration is not None:
-            declarations = self.declaration.children
+        if self.step is None:
+            step = 1
         else:
-            declarations = []
-        parameters = list(map(lambda x: x.name, declarations))
-        fun = FunctionObject(name, parameters, self.compound_statement)
-        ctx.set(name, fun)
+            step = await self.step.touch(interpreter, ns)
+        assert isinstance(step, int)
 
-        ctx.line_stack.pop()
+        i =  start
 
+        while (step > 0 and i <= limit) or (step <= 0 and i >= limit):
+            if interpreter.breaking:
+                break
+            ns.set_local(name, i)
+            result = await self.block.touch(interpreter, ns)
+            i += step
 
-class Declaration(NodeList):
+        interpreter.breaking = False
 
-    def __init__(self, lineno):
-        super().__init__(lineno)
+        interpreter.loop_stack.pop()
+        interpreter.line_stack.pop()
 
-
-class Return(Node):
-
-    def __init__(self, lineno, expression):
-        super().__init__(lineno)
-        self.expression = expression
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        ctx.must_return = True
-        result = await self.expression.touch(ctx)
-        ctx.line_stack.pop()
         return result
 
 
-class IfStatement(NodeList):
+class GenericFor(Statement):
 
-    def __init__(self, lineno, if_expression, compound_statement, elif_statement, else_statement):
+    def __init__(self, lineno, namelist, explist, block):
         super().__init__(lineno)
-        self.if_expression = if_expression
-        self.compound_statement = compound_statement
-        self.elif_statement = elif_statement
-        self.else_statement = else_statement
+        self.namelist = namelist
+        self.explist = explist
+        self.block = block
 
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        if bool(await self.if_expression.touch(ctx)):
-            result = await self.compound_statement.touch(ctx)
-            ctx.line_stack.pop()
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        interpreter.loop_stack.append(self)
+
+        result = None
+
+        ns = ns.clone()
+
+        params = []
+        for expression in self.explist.children:
+            evaluated = await expression.touch(interpreter, ns)
+            if isinstance(evaluated, (list, tuple)):
+                params += evaluated
+        if len(params) < 3:
+            params += [None] * (3 - len(params))
+
+        names = []
+        for name in self.namelist.children:
+            names.append(await name.touch(interpreter, ns))
+
+        fun, obj, key = params[0:3]
+        while True:
+            values = fun(obj, key)
+            if values is None:
+                break
+            if not isinstance(values, (list, tuple)):
+                values = [values]
+            for k, v in zip(names, values):
+                ns.set_local(k, v)
+
+            result = await self.block.touch(interpreter, ns)
+
+            key = values[0]
+
+        interpreter.breaking = False
+
+        interpreter.loop_stack.pop()
+        interpreter.line_stack.pop()
+
+        return result
+
+
+class Function(Statement):
+
+    def __init__(self, lineno, name, body, local):
+        super().__init__(lineno)
+        self.name = name
+        self.body = body
+        self.local = local
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+
+        func = esl.function.Function(self.body.parlist, self.body.body)
+
+        name = await self.name.children.pop().touch(interpreter, ns)
+
+        parent = None
+        for item in self.name.children:
+            if parent is None:
+                n = await item.touch(interpreter, ns)
+                parent = ns.get(n)
+            else:
+                parent = parent[n]
+            if parent is None:
+                raise NameError('function not found')
+
+        if parent is None:
+            if ns.has_local(name):
+                ns.set_local(name, func)
+            else:
+                ns.set_global(name, func)
+        else:
+            parent[name] = func
+
+        interpreter.line_stack.pop()
+
+
+class Break(Statement):
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        interpreter.breaking = True
+        interpreter.line_stack.pop()
+
+
+class Return(Statement):
+
+    def __init__(self, lineno, explist):
+        super().__init__(lineno)
+        self.explist = explist
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+
+        if self.explist is None:
+            expressions = []
+        else:
+            expressions = self.explist
+
+        result = []
+        for expression in expressions:
+            result.append(await expression.touch(interpreter, ns))
+
+        interpreter.returning = True
+        interpreter.line_stack.pop()
+
+        if len(result) == 0:
+            return
+        elif len(result) == 1:
+            return result[0]
+        else:
             return result
-        else:
-            if self.elif_statement is not None:
-                for expression, statement in self.elif_statement.children:
-                    if bool(await expression.touch(ctx)):
-                        result = await statement.touch(ctx)
-                        ctx.line_stack.pop()
-                        return result
-
-            if self.else_statement is not None:
-                result = await self.else_statement.compound_statement.touch(ctx)
-                ctx.line_stack.pop()
-                return result
 
 
-class ElIfStatement(NodeList):
-
-    def __init__(self, lineno):
-        super().__init__(lineno)
+class ElseIfList(ListNode):
+    pass
 
 
-class ElseStatement(Node):
+class ElseIf(Node):
 
-    def __init__(self, lineno, compound_statement):
-        super().__init__(lineno)
-        self.compound_statement = compound_statement
-
-
-class SpecialIfStatement(Node):
-
-    def __init__(self, lineno, expression, if_expression):
+    def __init__(self, lineno, expression, block):
         super().__init__(lineno)
         self.expression = expression
-        self.if_expression = if_expression
+        self.block = block
 
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = None
-        if bool(await self.if_expression.touch(ctx)):
-            result = await self.expression.touch(ctx)
-        ctx.line_stack.pop()
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        result = await self.block.touch(interpreter, ns)
+        interpreter.line_stack.pop()
         return result
 
 
-class UnlessStatement(Node):
+class Else(Node):
 
-    def __init__(self, lineno, expression, if_expression):
+    def __init__(self, lineno, block):
         super().__init__(lineno)
-        self.expression = expression
-        self.if_expression = if_expression
+        self.block = block
 
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = None
-        if not bool(await self.if_expression.touch(ctx)):
-            result = await self.expression.touch(ctx)
-        ctx.line_stack.pop()
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        result = await self.block.touch(interpreter, )
+        interpreter.line_stack.pop()
         return result
 
 
-class ForStatement(Node):
+class FunctionName(ListNode):
 
-    def __init__(self, lineno, init_expression, relative_expression, increment_expression, compound_statement):
+    def __init__(self, lineno, colon=False):
         super().__init__(lineno)
-        self.init_expression = init_expression
-        self.relative_expression = relative_expression
-        self.increment_expression = increment_expression
-        self.compound_statement = compound_statement
-        self.must_break = False
-        self.must_continue = False
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        init = self.init_expression
-        relative = self.relative_expression
-        increment = self.increment_expression
-
-        ctx.loops.append(self)
-
-        await init.touch(ctx)
-
-        while bool(await relative.touch(ctx)):
-            self.must_continue = False
-            for statement in self.compound_statement.translation_unit.children:
-                await statement.touch(ctx)
-                if self.must_break or self.must_continue:
-                    break
-            if self.must_break:
-                break
-            await increment.touch(ctx)
-
-        ctx.loops.pop()
-        ctx.line_stack.pop()
+        self.colon = colon
 
 
-class ForInStatement(Node):
-
-    def __init__(self, lineno, id, expression, compound_statement):
-        super().__init__(lineno)
-        self.id = id
-        self.expression = expression
-        self.compound_statement = compound_statement
-        self.must_break = False
-        self.must_continue = False
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        ctx.loops.append(self)
-        for element in await self.expression.touch(ctx):
-            self.must_continue = False
-            ctx.set(self.id.name, element)
-            for statement in self.compound_statement.translation_unit.children:
-                await statement.touch(ctx)
-                if self.must_break or self.must_continue:
-                    break
-            if self.must_break:
-                break
-        ctx.loops.pop()
-        ctx.line_stack.pop()
+class VariableList(ListNode):
+    pass
 
 
-class WhileStatement(Node):
+class Variable(Node):
 
-    def __init__(self, lineno, expression, compound_statement):
-        super().__init__(lineno)
-        self.expression = expression
-        self.compound_statement = compound_statement
-        self.must_break = False
-        self.must_continue = False
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        ctx.loops.append(self)
-
-        while bool(await self.expression.touch(ctx)):
-            self.must_continue = False
-            for statement in self.compound_statement.translation_unit.children:
-                await statement.touch(ctx)
-                if self.must_break or self.must_continue:
-                    break
-            if self.must_break:
-                break
-        ctx.loops.pop()
-        ctx.line_stack.pop()
-
-
-class LoopCommandStatement(Node):
-
-    def __init__(self, lineno, command):
-        super().__init__(lineno)
-        self.command = command
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        if len(ctx.loops) < 1:
-            raise RuntimeError('{} statement without loop'.format(self.command))
-        if self.command == 'break':
-            ctx.loops[-1].must_break = True
-        elif self.command == 'continue':
-            ctx.loops[-1].must_continue = True
-        else:
-            raise RuntimeError(
-                    'unknown loop command {}'.format(type(self.command)))
-        ctx.line_stack.pop()
-
-
-class CompoundStatement(Node):
-
-    def __init__(self, lineno, translation_unit):
-        super().__init__(lineno)
-        self.translation_unit = translation_unit
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = await self.translation_unit.touch(ctx)
-        ctx.line_stack.pop()
-        return result
-
-
-class ExpressionStatement(Node):
-
-    def __init__(self, lineno, expression):
-        super().__init__(lineno)
-        self.expression = expression
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = await self.expression.touch(ctx)
-        ctx.line_stack.pop()
-        return result
-
-
-class VariableAssignment(Node):
-
-    def __init__(self, lineno, variable, expression):
-        super().__init__(lineno)
-        self.variable = variable
-        self.expression = expression
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-
-        var = self.variable
-        value = await self.expression.touch(ctx)
-
-        # Assign to variable
-        if isinstance(var, Id):
-            ctx.set(var.name, value)
-
-        # Assign to object's attribute
-        elif isinstance(var, Attribute):
-            if var.attr is None:
-                ctx.set(var.id.name, value)
-            else:
-                obj = await var.attr.touch(ctx)
-                setattr(obj, var.id.name, value)
-
-        # Array element asignment
-        elif isinstance(var, ArrayAccess):
-            array = await var.attr.touch(ctx)
-            array_key = await var.expression.touch(ctx)
-            array.__setitem__(array_key, value)
-
-        else:
-            raise TypeError('unknown variable type: {}'.format(type(var).__name__))
-
-        ctx.line_stack.pop()
-        return value
-
-
-class IncrementAssignment(VariableAssignment):
-
-    def __init__(self, lineno, variable, operator, expression):
-        operator = {'+=': '+', '-=': '-'}.get(operator)
-        expression = BinaryExpression(lineno, variable, operator, expression)
-        super().__init__(lineno, variable, expression)
-
-
-class LogicalExpression(Node):
-
-    def __init__(self, lineno, left, operator, right):
+    def __init__(self, lineno, left, name, proto='dict'):
         super().__init__(lineno)
         self.left = left
-        self.operator = operator
-        self.right = right
+        self.name = name
+        self.proto = proto
 
-    def eval(self):
+    async def touch(self, interpreter, ns):
+        if isinstance(self.name, Name):
+            name = self.name.name
+        else:
+            name = await self.name.touch(interpreter, ns)
+
         if self.left is None:
-            left = ''
+            result = ns.get(name, None)
         else:
-            left = self.left.eval()
-        return '{} {} {}'.format(left, self.operator, self.right.eval())
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        parts = []
-        if self.left is not None:
-            parts.append(self.left.eval())
-        parts.append(self.operator)
-        parts.append(self.right.eval())
-        code = ' '.join(parts)
-        result = eval(code, ctx.globals, ctx.locals)
-        ctx.line_stack.pop()
+            left = await self.left.touch(interpreter, ns)
+            if self.proto == 'dict':
+                result = ns.get_key(left, name, None)
+            elif self.proto == 'attr':
+                result = ns.get_attribute(left, name, None)
+            else:
+                raise AssertionError('unknown proto')
         return result
 
 
-class RelationalExpression(Node):
+class NameList(ListNode):
+    pass
 
-    def __init__(self, lineno, left, operator, right):
+
+class ExpressionList(ListNode):
+    pass
+
+
+class Constant(Node):
+
+    def __init__(self, lineno, value):
         super().__init__(lineno)
-        self.left = left
-        self.operator = operator
-        self.right = right
+        self.value = value
 
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        code = '{} {} {}'.format(
-                self.left.eval(), self.operator, self.right.eval())
-        result = eval(code, ctx.globals, ctx.locals)
-        ctx.line_stack.pop()
+    async def touch(self, interpreter, ns):
+        return self.value
+
+
+class FunctionCall(Node):
+
+    def __init__(self, lineno, prefixexp, name, args):
+        super().__init__(lineno)
+        self.prefixexp = prefixexp
+        self.name = name
+        self.args = args
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        func = await self.prefixexp.touch(interpreter, ns)
+
+        ns = ns.clone()
+
+        if isinstance(func, esl.function.Function):
+            if func.parlist is not None:
+                count = len(func.parlist.namelist.children)
+                for i in range(0, count):
+                    parameter = await func.parlist.namelist.children[i].touch(
+                                        interpreter, ns)
+                    arg = await self.args.children[i].touch(interpreter, ns)
+                    ns.set_local(parameter, arg)
+            result = await func.body.touch(interpreter, ns)
+
+        else:
+            args = []
+            for arg in self.args.children:
+                args.append(await arg.touch(interpreter, ns))
+            ba = inspect.signature(func).bind(*args)
+            for k, v in ba.arguments.items():
+                ns.set_local(k, v)
+
+            keys = ba.arguments.keys()
+            code = '__lua_func({})'.format(', '.join(keys))
+
+            locals_dict = dict([(k, v) for k, v in ns.locals.items()])
+            locals_dict['__lua_func'] = func
+            result = eval(code, ns.globals, locals_dict)
+
+        interpreter.returning = False
+        interpreter.line_stack.pop()
+
         return result
 
 
-class BinaryExpression(Node):
+class Args(ListNode):
+    pass
+
+
+class FunctionBody(Node):
+
+    def __init__(self, lineno, parlist, body):
+        super().__init__(lineno)
+        self.parlist = parlist
+        self.body = body
+
+
+class ParametersList(Node):
+
+    def __init__(self, lineno, namelist, dots=False):
+        super().__init__(lineno)
+        self.namelist = namelist
+        self.dots = dots
+
+
+class Table(Node):
+
+    def __init__(self, lineno, fieldlist):
+        super().__init__(lineno)
+
+        self.fieldlist = fieldlist
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        fieldlist = []
+        if self.fieldlist is not None:
+            for field in self.fieldlist.children:
+                if field.name is None:
+                    name = None
+                else:
+                    name = await field.name.touch(interpreter, ns)
+                value = await field.expression.touch(interpreter, ns)
+                fieldlist.append((name, value))
+
+        table = esl.table.Table()
+        i = 1
+        for k,v in fieldlist:
+            if k is None:
+                k = i
+                i += 1
+            table[k] = v
+        interpreter.line_stack.pop()
+        return table
+
+
+class FieldList(ListNode):
+    pass
+
+
+class Field(Node):
+
+    def __init__(self, lineno, name, expression):
+        super().__init__(lineno)
+        self.name = name
+        self.expression = expression
+
+
+class Logical(Node):
 
     def __init__(self, lineno, left, operation, right):
         super().__init__(lineno)
@@ -518,300 +596,199 @@ class BinaryExpression(Node):
         self.operation = operation
         self.right = right
 
-    def eval(self):
-        return '({} {} {})'.format(self.left.eval(),
-                                   self.operation,
-                                   self.right.eval())
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
 
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        code = '{} {} {}'.format(self.left.eval(),
-                                 self.operation,
-                                 self.right.eval())
-        result = eval(code, ctx.globals, ctx.locals)
-        ctx.line_stack.pop()
-        return result
+        left = await self.left.touch(interpreter, ns)
+        right = await self.right.touch(interpreter, ns)
 
-
-class Call(Node):
-
-    def __init__(self, lineno, attribute, parameters):
-        super().__init__(lineno)
-        self.attribute = attribute
-        self.parameters = parameters
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-
-        if self.parameters is None:
-            parameters = []
+        if self.operation == 'and':
+            return left and right
+        elif self.operation == 'or':
+            return left or right
         else:
-            parameters = self.parameters
+            raise NotImplementedError('operator {} is not '
+                                      'implemented'.format(self.operator))
+        return result
 
-        # Compile parameters
-        args = ()
-        kwargs = {}
 
-        first_named_param = None
-        try:
-            first_named_param = list(map(lambda x: type(x), parameters)) \
-                                            .index(VariableAssignment)
-        except ValueError:
-            pass
+class Relational(Node):
 
-        if first_named_param is None:
-            args = tuple(parameters)
+    def __init__(self, lineno, left, operation, right):
+        super().__init__(lineno)
+        self.left = left
+        self.operation = operation
+        self.right = right
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+
+        left = await self.left.touch(interpreter, ns)
+        right = await self.right.touch(interpreter, ns)
+
+        if self.operation == '==':
+            result = (left == right)
+        elif self.operation == '<':
+            result = (left < right)
+        elif self.operation == '>':
+            result = (left > right)
+        elif self.operation == '<=':
+            result = (left <= right)
+        elif self.operation == '>=':
+            result = (left >= right)
+        elif self.operation == '~=':
+            result = (left != right)
         else:
-            args = tuple(parameters[0:first_named_param])
-            for param in parameters[first_named_param:]:
-                if isinstance(param, VariableAssignment):
-                    kwargs[param.variable.name] = param.expression
-                else:
-                    raise RuntimeError(
-                            'can\'t use unnamed parameter after kwargs')
+            raise NotImplementedError('operation {} not '
+                                      'supported'.format(self.operation))
 
-        # Find function and create namespaces
-        fun = await self.attribute.touch(ctx)
+        interpreter.line_stack.pop()
 
-        # Append element to stack
-        ctx.call_stack.append((self.attribute.eval(), self.lineno))
+        return result
 
-        if isinstance(fun, FunctionObject):
-            result = await fun.touch(ctx, *args, **kwargs)
 
+class Append(Node):
+
+    def __init__(self, lineno, left, right):
+        super().__init__(lineno)
+        self.left = left
+        self.right = right
+
+
+class Arithmetic(Node):
+
+    def __init__(self, lineno, left, operation, right):
+        super().__init__(lineno)
+        self.left = left
+        self.operation = operation
+        self.right = right
+
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+
+        left = await self.left.touch(interpreter, ns)
+        right = await self.right.touch(interpreter, ns)
+
+        if self.operation == '+':
+            result = left + right
+        elif self.operation == '-':
+            result = left - right
+        elif self.operation == '*':
+            result = left * right
+        elif self.operation == '/':
+            result = left / right
         else:
-            params = []
-            params.append(', '.join([x.eval() for x in args]))
-            params.append(', '.join(['{}={}'.format(k, v.eval())
-                                                        for x in kwargs]))
-            code = '{}({})'.format(self.attribute.eval(),
-                                   ', '.join(x for x in params if x))
-            result = eval(code, ctx.globals, ctx.locals)
+            raise NotImplementedError('operation {} not '
+                                      'supported'.format(self.operation))
 
-        # Call coroutine
-        if inspect.iscoroutine(result):
-            result = await result
+        interpreter.line_stack.pop()
 
-        # Del last element from stack
-        ctx.call_stack.pop()
-
-        # Reset return flag
-        ctx.must_return = False
-
-        ctx.line_stack.pop()
         return result
 
 
-class CallElement(NodeList):
-
-    def __init__(self, lineno):
-        super().__init__(lineno)
-
-
-class Hash(Node):
-
-    def __init__(self, lineno, element=None):
-        super().__init__(lineno)
-        self.element = element
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        if self.element is None:
-            result = AttrDict()
-        else:
-            result = await self.element.touch(ctx)
-        ctx.line_stack.pop()
-        return result
-
-
-class HashElement(NodeList):
-
-    def __init__(self, lineno):
-        super().__init__(lineno)
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = AttrDict()
-        for k, v in self.children:
-            result[await k.touch(ctx)] = await v.touch(ctx)
-        ctx.line_stack.pop()
-        return result
-
-
-class Array(Node):
-
-    def __init__(self, lineno, element):
-        super().__init__(lineno)
-        self.element = element
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        if self.element is None:
-            result = list()
-        else:
-            element = await self.element.touch(ctx)
-            result = list(element)
-        ctx.line_stack.pop()
-        return result
-
-
-class ArrayElement(NodeList):
-
-    def __init__(self, lineno):
-        super().__init__(lineno)
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = []
-        for x in self.children:
-            result.append(await x.touch(ctx))
-        ctx.line_stack.pop()
-        return result
-
-
-class ArrayAccess(Node):
-
-    def __init__(self, lineno, attr, expression):
-        super().__init__(lineno)
-        self.attr = attr
-        self.expression = expression
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        array = await self.attr.touch(ctx)
-        result = array.__getitem__(await self.expression.touch(ctx))
-        ctx.line_stack.pop()
-        return result
-
-
-class Attribute(Node):
-
-    def __init__(self, lineno, attr, id):
-        super().__init__(lineno)
-        self.attr = attr
-        self.id = id
-
-    def eval(self):
-        parts = []
-        if self.attr is not None:
-            parts.append(self.attr.eval())
-        parts.append(self.id.eval())
-        return '.'.join(parts)
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        if self.attr is not None:
-            obj = await self.attr.touch(ctx)
-            result = getattr(obj, self.id.name)
-        else:
-            result = await self.id.touch(ctx)
-        ctx.line_stack.pop()
-        return result
-
-
-class Id(Node):
-
-    def __init__(self, lineno, name):
-        super().__init__(lineno)
-        assert '.' not in name, 'variable mustn\'t include dot'
-        assert not name.startswith('_'), 'variable mustn\'t starts with _'
-        self.name = name
-
-    def eval(self):
-        return self.name
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = eval(self.name, ctx.globals, ctx.locals)
-        ctx.line_stack.pop()
-        return result
-
-
-class BasicType(Node):
-
-    def __init__(self, lineno, value):
-        super().__init__(lineno)
-        self.value = value
-
-    def eval(self):
-        value = self.value
-        if value is True:
-            return 'True'
-        if value is False:
-            return 'False'
-        if value is None:
-            return 'None'
-        if isinstance(value, int):
-            return str(value)
-        raise TypeError('unknown type: {}'.format(type(value)))
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = self.value
-        ctx.line_stack.pop()
-        return result
-
-
-class StringType(Node):
-
-    def __init__(self, lineno, value):
-        super().__init__(lineno)
-        self.value = value
-
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = self.value
-        ctx.line_stack.pop()
-        return result
-
-
-class UnaryExpression(Node):
+class Unary(Node):
 
     def __init__(self, lineno, operation, expression):
         super().__init__(lineno)
         self.operation = operation
         self.expression = expression
 
-    async def touch(self, ctx):
-        ctx.line_stack.append(self.lineno)
-        result = eval('{} {}'.format(self.operation, self.expression.eval()),
-                      ctx.globals, ctx.locals)
-        ctx.line_stack.pop()
-        return result
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+        result = await self.expression.touch(interpreter, ns)
+        interpreter.line_stack.pop()
+
+        if self.operation == '-':
+            return -result
+        elif self.operation == 'not':
+            return not bool(result)
+        elif self.operation == '#':
+            return len(result)
 
 
-# Interpretier
+class Name(Node):
+
+    def __init__(self, lineno, name):
+        super().__init__(lineno)
+        self.name = name
+
+    async def touch(self, interpreter, ns):
+        return self.name
+
+
 class Interpreter(object):
 
-    async def run(self, bytecode, ctx=None):
-        if ctx is None:
-            ctx = context.Context()
+    __extensions__ = ['pairs', 'next']
 
+    def __init__(self, code, bytecode=None, namespace=None,
+                 extensions=None, debug=True):
+        self.__code = code
+
+        if bytecode is None:
+            parser = esl.parse.Parser()
+            try:
+                bytecode = parser.parse(code)
+            except (esl.lex.LexError, esl.parse.ParseError) as e:
+                raise ESLSyntaxError(str(e))
+        self.__bytecode = bytecode
+
+        if namespace is None:
+            namespace = esl.namespace.Namespace()
+        self.__namespace = namespace
+
+        self.add_extensions(extensions)
+
+        self.debug = debug
+
+        self.line_stack = []
+        self.call_stack = []
+        self.loop_stack = []
+
+        self.breaking = False
+        self.returning = False
+
+    def add_extensions(self, extensions=None, **kwargs):
+        if extensions is None:
+            extensions = self.__extensions__
+
+        ns = self.__namespace
+
+        for extension in extensions:
+            ns.set_global(extension, getattr(esl.extensions, extension))
+
+        ns.globals.update(kwargs)
+
+    async def run(self):
+        if self.__bytecode is None:
+            return
         try:
-            result = await bytecode.touch(ctx)
+            result = await self.__bytecode.touch(self, self.__namespace)
 
         except Exception as e:
-            #logger.error('Error while executing esl script:')
+            # Error message
             logger.error('{}: {}'.format(type(e).__name__, e))
 
-            if hasattr(bytecode, 'code'):
-                lines = bytecode.code.split('\n')
-                parent_fun = '<main>'
-                for fun, lineno in ctx.call_stack:
-                    logger.error('... {} line {}: {}()'.format(parent_fun,
-                                                              lineno, fun))
-                    parent_fun = fun
+            lines = self.__code.split('\n')
 
-                lastline = ctx.line_stack[-1]
-                if lastline <= len(lines):
-                    line = lines[lastline - 1].strip()[:50]
-                    logger.error('... {} line {}: `{}\' ...'.format(parent_fun,
-                                                                   lastline,
-                                                                   line))
-                else:
-                    logger.error('... {} line {}: can\' find source '
-                                 'line '.format(parent_fun, lastline))
+            # ESL call stack
+            parent_fun = '<main>'
+            for fun, lineno in self.call_stack:
+                logger.error('... {} line {}: {}()'.format(parent_fun,
+                                                          lineno, fun))
+                parent_fun = fun
 
+            lastline = self.line_stack[-1]
+            if lastline <= len(lines):
+                line = lines[lastline - 1].strip()[:50]
+                logger.error('... {} line {}: `{}\' ...'.format(parent_fun,
+                                                               lastline,
+                                                               line))
+            else:
+                logger.error('... {} line {}: can\' find source '
+                             'line '.format(parent_fun, lastline))
+
+            # Python traceback
+            if self.debug:
                 t, val, tb = sys.exc_info()
                 message = str(val)
                 if message:
@@ -825,6 +802,6 @@ class Interpreter(object):
                                                                 line, fun))
                 logger.debug('...   {}'.format(inst))
 
-            raise RuntimeError(str(e))
+            raise ESLRuntimeError(str(e))
 
         return result

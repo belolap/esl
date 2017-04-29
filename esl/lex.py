@@ -1,168 +1,143 @@
+#!/usr/bin/env python3
+
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
 __copyright__ = '(c) 2016 Business group for development management'
 __licence__ = 'For license information see LICENSE'
 
 import ply.lex
+import collections
 
 
-class SyntaxError(Exception):
+class LexError(Exception):
     pass
 
 
 class Lexer(object):
 
-    reserved = ('TRUE',
-                'FALSE',
-                'NULL',
-                'NOT',
-                'AND',
-                'OR',
-                'IF',
-                'ELIF',
-                'ELSE',
-                'UNLESS',
-                'FOR',
-                'IN',
-                'WHILE',
-                'CONTINUE',
-                'BREAK',
-                'FUNCTION',
-                'RETURN',
-                'IMPORT')
-    reserved_words = {}
-    for k in reserved:
-        reserved_words[k.lower()] = k
+    keywords = collections.OrderedDict([
+        ('do', 'DO'),
+        ('while', 'WHILE'),
+        ('for', 'FOR'),
+        ('until', 'UNTIL'),
+        ('repeat', 'REPEAT'),
+        ('end', 'END'),
+        ('in', 'IN'),
 
-    tokens = reserved + (
-                # Characters . , : ;
-                'DOT',
-                'COMMA',
-                'COLON',
-                'SEMICOLON',
+        ('if', 'IF'),
+        ('then', 'THEN'),
+        ('elseif', 'ELSEIF'),
+        ('else', 'ELSE'),
 
-                # Brackets: ( ) [ ] { }
-                'LPAREN',
-                'RPAREN',
-                'LBRACKET',
-                'RBRACKET',
-                'LBRACE',
-                'RBRACE',
+        ('local', 'LOCAL'),
 
-                # Assigment: =
-                'ASSIGN',
+        ('function', 'FUNCTION'),
+        ('return', 'RETURN'),
+        ('break', 'BREAK'),
 
-                # Comparsion: > < == != >= <=
-                'GREATER',
-                'LESS',
-                'EQUAL',
-                'NOT_EQUAL',
-                'GREATER_EQUAL',
-                'LESS_EQUAL',
+        ('nil', 'NIL'),
+        ('false', 'FALSE'),
+        ('true', 'TRUE'),
 
-                # Doubles: ++ --
-                'DOUBLE_PLUS',
-                'DOUBLE_MINUS',
+        ('and', 'AND'),
+        ('or', 'OR'),
+        ('not', 'NOT'),
+    ])
 
-                # Operators: + - * /
-                'PLUS',
-                'MINUS',
-                'TIMES',
+    tokens = tuple(keywords.values()) + (
+        'NUMBER',
+        'STRING',
+        'TDOT',
+        'NAME',
 
-                'DIVIDE',
+        'PLUS',
+        'MINUS',
+        'TIMES',
+        'DIVIDE',
+        'POWER',
+        'MODULO',
 
-                # Assign with operators += -= *= /=
-                'EQ_PLUS',
-                'EQ_MINUS',
+        'EQUALS',
+        'LESS_THEN',
+        'MORE_THEN',
+        'LESS_EQUAL_THEN',
+        'MORE_EQUAL_THEN',
+        'TILDE_EQUAL',
 
-                # Others
-                'ID',
-                'INTEGER',
-                'DECIMAL',
-                'STRING')
+        'SQUARE',
 
-    precedence = (
-        ('left', 'PLUS', 'MINUS'),
-        ('left', 'TIMES', 'DIVIDE'),
+        'APPEND',
+
+        'ASSIGN',
+        'DOT',
+        'COLON',
+        'COMMA',
+        'SEMICOLON',
+
+        'BRACES_L',
+        'BRACES_R',
+
+        'BRACKET_L',
+        'BRACKET_R',
+
+        'PARANTHESES_L',
+        'PARANTHESES_R',
     )
 
-    # Characters . , : ;
-    t_DOT           = r'\.'
-    t_COMMA         = r','
-    t_COLON         = r':'
-    t_SEMICOLON     = r';'
+    t_NUMBER          = r'\d+'
+    t_STRING          = r'"[^\\"]*"' # r'".*?"|\'.*?\''
+    t_TDOT            = r'\.\.\.'
 
-    # Brackets: ( ) [ ] { }
-    t_LPAREN        = r'\('
-    t_RPAREN        = r'\)'
-    t_LBRACKET      = r'\['
-    t_RBRACKET      = r'\]'
-    t_LBRACE        = r'\{'
-    t_RBRACE        = r'\}'
-
-    # Assigment: =
-    t_ASSIGN        = r'='
-
-    # Comparsion: > < == != >= <=
-    t_GREATER       = r'>'
-    t_LESS          = r'<'
-    t_EQUAL         = r'=='
-    t_NOT_EQUAL     = r'!='
-    t_GREATER_EQUAL = r'>='
-    t_LESS_EQUAL    = r'<='
-
-    # Doubles: ++ --
-    t_DOUBLE_PLUS   = r'\+\+'
-    t_DOUBLE_MINUS  = r'--'
-
-    # Operators: + - * /
-    t_PLUS          = r'\+'
-    t_MINUS         = r'-'
-    t_TIMES         = r'\*'
-    t_DIVIDE        = r'/'
-
-    # Assign with operators += -= *= /=
-    t_EQ_PLUS       = r'\+='
-    t_EQ_MINUS      = r'-='
-
-    # Others
-    def t_ID(self, t):
-        r'[A-Za-z][\w_]*'
-        if t.value in self.reserved_words:
-            t.type = self.reserved_words[t.value]
+    def t_NAME(self, t):
+        r'[A-Za-z][A-Za-z0-9_]*'
+        if t.value in self.keywords:
+            t.type = self.keywords[t.value]
         return t
 
-    t_INTEGER       = r'\d+'
-    t_DECIMAL       = r'\d*\.\d+'
-    t_STRING        = r'".*?"|\'.*?\''
+    t_PLUS            = r'\+'
+    t_MINUS           = r'-'
+    t_TIMES           = r'\*'
+    t_DIVIDE          = r'/'
+    t_POWER           = r'\^'
+    t_MODULO          = r'%'
 
-    # Ignored symbols
-    t_ignore  = ' \t'
+    t_EQUALS          = r'=='
+    t_LESS_THEN       = r'<'
+    t_MORE_THEN       = r'>'
+    t_LESS_EQUAL_THEN = r'<='
+    t_MORE_EQUAL_THEN = r'>='
+    t_TILDE_EQUAL     = r'~='
 
-    # Comments
-    def t_COMMENT1(self, t):
-        r'/\*[\w\W]*?\*/'
-        t.lexer.lineno += t.value.count('\n')
+    t_SQUARE          = r'\#'
 
-    def t_COMMENT2(self, t):
-        r'//[^\n]*'
+    t_APPEND          = r'\.\.'
 
-    # New lines
+    t_ASSIGN          = r'='
+    t_DOT             = r'\.'
+    t_COLON           = r':'
+    t_COMMA           = r','
+    t_SEMICOLON       = r';'
+
+    t_BRACES_L        = r'\{'
+    t_BRACES_R        = r'\}'
+
+    t_BRACKET_L       = r'\['
+    t_BRACKET_R       = r'\]'
+
+    t_PARANTHESES_L   = r'\('
+    t_PARANTHESES_R   = r'\)'
+
     def t_NEWLINE(self, t):
         r'\n+'
         t.lexer.lineno += len(t.value)
         t.lexer.startpos = t.lexer.lexpos
 
-    # Errors handle
-    def error_msg(self, msg, line, pos, value):
-        return '{} at line {}, position {}, statement `{}\''.format(
-                                                        msg, line, pos, value)
+    t_ignore = ' \t'
 
     def t_error(self, t):
-        startpos = getattr(t.lexer, 'startpos', 1)
-        column = t.lexpos - startpos + 1
-        raise SyntaxError(self.error_msg('can\'t parse', t.lineno, column,
-            t.value[0]))
+        #XXX: rewrite
+        msg = ('Illegal character `{}\' '
+               'at line {}'.format(t.value[0], t.lexer.lineno))
+        raise LexError(msg)
 
-    # Build lexer
-    def build(self):
-        self.lexer = ply.lex.lex(module=self)
+    def build(self, **kwargs):
+        self.lexer = ply.lex.lex(module=self, **kwargs)

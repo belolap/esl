@@ -1,2 +1,2 @@
 # esl
-Simple scripting language to use inside python
+Scripting language with LUA syntax to embed into python async applications

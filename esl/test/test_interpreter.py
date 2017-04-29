@@ -5,35 +5,38 @@ __copyright__ = '(c) 2016 Business group for development management'
 __licence__ = 'For license information see LICENSE'
 
 import decimal
+import logging
 import tornado.testing
 
-from .. import lex
-from .. import parse
-from .. import context
-from .. import interpreter
+import esl
+
+
+logger = logging.getLogger('esl.test')
 
 
 class TestInterpreter(tornado.testing.AsyncTestCase):
 
     def setUp(self):
         super().setUp()
-        self.parser = parse.Parser(debug=False)
-        self.interpreter = interpreter.Interpreter()
 
-    async def run_code(self, code, ctx=None):
-        bytecode = self.parser.parse(code)
-        result = await self.interpreter.run(bytecode, ctx)
-        return result
+    def dump_lex(self, code):
+        lexer = esl.lex.Lexer()
+        lexer.build()
+        lexer.lexer.input(code)
+        for tok in lexer.lexer:
+            logger.debug(tok)
 
-    async def assert_code(self, template, code, ctx=None):
-        result = await self.run_code(code, ctx)
-        if isinstance(result, interpreter.AttrDict):
-            result = dict([(k, v) for k, v in result.items()])
+    async def run_code(self, code, ns=None):
+        interpreter = esl.Interpreter(code, namespace=ns)
+        return await interpreter.run()
+
+    async def assert_code(self, template, code, ns=None):
+        result = await self.run_code(code, ns=ns)
         self.assertEqual(template, result)
 
-    async def assert_raises(self, exc, code, ctx=None):
+    async def assert_raises(self, exc, code, ns=None):
         try:
-            result = await self.run_code(code, ctx)
+            result = await self.run_code(code, ns=ns)
         except exc as e:
             pass
         else:
@@ -41,455 +44,374 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
 
     @tornado.testing.gen_test
     def test_constants(self):
-        '''ESL: interpretate constants'''
-        yield self.assert_code(1, '1;')
-        yield self.assert_code(100, '100;')
-        yield self.assert_code(decimal.Decimal('100.35'), '100.35;')
-        yield self.assert_code('abc', '"abc";')
-        yield self.assert_code('abc', '\'abc\';')
-        yield self.assert_code('"abc"', '\'"abc"\';')
-        yield self.assert_code(True,  'true;')
-        yield self.assert_code(False, 'false;')
-        yield self.assert_code(None,  'null;')
+        '''Return constants'''
+        yield self.assert_code(1, 'return 1')
+        yield self.assert_code(100, 'return 100')
+        yield self.assert_code('abc', 'return "abc"')
+        yield self.assert_code(True,  'return true;')
+        yield self.assert_code(False, 'return false;')
+        yield self.assert_code(None,  'return nil;')
 
     @tornado.testing.gen_test
-    def test_id(self):
-        '''ESL: interpretate ids'''
-        ctx = context.Context()
-        ctx.set('a', 1)
-        yield self.assert_code(1,  'a;', ctx)
+    def test_binary_expressions(self):
+        '''Binary expressions'''
+        yield self.assert_code(9,  'return 5 + 4;')
+        yield self.assert_code(17, 'return 5 + 4 * 3;')
+        yield self.assert_code(27, 'return (5 + 4) * 3;')
+        yield self.assert_code(7,  'return 4 / 2 + 5;')
+        yield self.assert_code(12, 'return 5 + 4 / 2 + 5;')
+
+    @tornado.testing.gen_test
+    def test_tables(self):
+        '''Tables'''
+        t = esl.Table()
+        t[1] = 1
+        t[2] = 2
+        t["zed"] = "alive"
+        self.assertEqual([(1, 1), (2, 2), ('zed', 'alive')],
+                         [(k, t[k]) for k in t])
+        t[4] = 4
+        self.assertEqual(2, len(t))
+
+        t[3] = 3
+        self.assertEqual(4, len(t))
+
+        t = yield self.run_code('return {1, 2, 3}')
+        self.assertEqual([(1, 1), (2, 2), (3, 3)],
+                         [(k, t[k]) for k in t])
 
     @tornado.testing.gen_test
     def test_dot(self):
-        '''ESL: interpretate access to object attributes via dot'''
+        '''Access to object attributes via dot'''
         class A(object):
             def __init__(self, value, child=None):
                 self._x = 'denied'
                 self.x = value
                 self.s = child
-        ctx = context.Context()
-        ctx.set('a', A('c', A('7')))
+        ns = esl.Namespace()
+        ns.set_global('a', A('c', A('7')))
 
-        a = ctx.get('a')
-        yield self.assert_raises(lex.SyntaxError, 'a._x;', ctx)
-        yield self.assert_code('c', 'a.x;', ctx)
-        yield self.assert_code('7', 'a.s.x;', ctx)
-
-    @tornado.testing.gen_test
-    def test_binary_expressions(self):
-        '''ESL: interpretate binary expressions'''
-        yield self.assert_code(9,   '5 + 4;')
-        yield self.assert_code(17, '5 + 4 * 3;')
-        yield self.assert_code(27, '(5 + 4) * 3;')
-        yield self.assert_code(7,  '4 / 2 + 5;')
-        yield self.assert_code(12, '5 + 4 / 2 + 5;')
+        a = ns.get('a')
+        yield self.assert_code('c', 'return a.x;', ns)
+        yield self.assert_code('7', 'return a.s.x;', ns)
+        yield self.assert_raises(esl.ESLSyntaxError, 'return a._x;', ns)
 
     @tornado.testing.gen_test
     def test_variables(self):
-        '''ESL: interpretate variables assignment'''
-        yield self.assert_raises(interpreter.RuntimeError, 'a + 1;')
-        yield self.assert_code(5,  'a = b = 5; a;')
-        yield self.assert_code(5,  'a = b = 5; b;')
-        yield self.assert_raises(lex.SyntaxError, 'a = b += 5;')
-        yield self.assert_code(5,  'a = 5; a;')
-        yield self.assert_code(11, 'a = 5 + 6; a;')
+        '''Variables assignment'''
+        yield self.assert_code(5,  'a = 5; return a;')
+        yield self.assert_code(5,  'a = 5; b = a; return b;')
+        yield self.assert_code([6, 5],  'a, b = 5, 6; a, b = b, a; return a, b')
+        yield self.assert_code(None, 'return a;')
 
     @tornado.testing.gen_test
     def test_attributes_assignment(self):
-        '''ESL: interpretate attributes assignment'''
+        '''Object's attributes assignment'''
         class A(object):
             def __init__(self, x):
                 self.b = x
-        bytecode = self.parser.parse('a.b = "d"; a.b;')
-        ctx = context.Context()
-        ctx.set('a', A('zzz'))
-        yield self.assert_code('d', 'a.b = "d"; a.b;', ctx)
+        ns = esl.Namespace()
+        ns.set_global('a', A('zzz'))
+        yield self.assert_code('d', 'a.b = "d"; return a.b', ns)
+        yield self.assert_code(['z', 'b'], 'z, a.b = "z", "b"; return z, a.b', ns)
+
 
     @tornado.testing.gen_test
-    def test_array(self):
-        '''ESL: interpretate arrays and its elements'''
-        yield self.assert_code([1, 2, '3'], 'a = [1, 2, "3"]; a;')
-        yield self.assert_code({'a': 1, 'b': 2, 3: 3},
-                'a = {"a": 1, "b": 2, 3: 3}; a;')
-        yield self.assert_code('3', 'a = [1, 2, "3"]; a[2];')
-        yield self.assert_code(2, 'a = {"a": 1, "b": 2, 3: 3}; a["b"];')
-        yield self.assert_code(4, 'a = {"a": 1}; a["a"] = 4; a["a"];')
-        yield self.assert_code(4, 'a = [9,8,7,6]; a[1+2] = 4; a[3];')
-        yield self.assert_code(interpreter.AttrDict(), '{};')
-        yield self.assert_code([], '[];')
-
-    @tornado.testing.gen_test
-    def test_dot_array(self):
-        '''ESL: interpretate dot after array access'''
-        code = ('a = {"a": 1};'
-                'b = {"a": a, "b": 7};'
-                'c = {"b": b};')
-
-        yield self.assert_code(7, code + 'c["b"].b;')
-        yield self.assert_code(1, code + 'c["b"].a["a"];')
-        yield self.assert_code(7, code + 'c["b"]["b"];')
-        yield self.assert_code(1, code + 'c["b"]["a"]["a"];')
-
-    @tornado.testing.gen_test
-    def test_increment_assignment(self):
-        '''ESL: interpretate increment assignment'''
-        yield self.assert_raises(interpreter.RuntimeError,'a += 1;')
-        yield self.assert_code(11, 'a = 5; a += 6; a;')
-        yield self.assert_code(-1, 'a = 5; a -= 6; a;')
-        yield self.assert_code(6,  'a = 5; a++; a;')
-        yield self.assert_code(5,  'a = 6; a--; a;')
+    def test_relational_expressions(self):
+        '''Relational expressions'''
+        yield self.assert_code(True,  'return 5 == 5;')
+        yield self.assert_code(False, 'return 5 ~= 5;')
+        yield self.assert_code(True,  'return 5 >= 5;')
+        yield self.assert_code(False, 'return 5 >= 6;')
+        yield self.assert_code(True,  'return 6 >= 5;')
+        yield self.assert_code(False, 'return 6 <= 5;')
+        yield self.assert_code(False, 'return 5  < 5;')
 
     @tornado.testing.gen_test
     def test_unary_expressions(self):
-        '''ESL: interpretate unary expressions'''
-        yield self.assert_code(-5, '-5;')
-        yield self.assert_code(5,  'a = -5; -a;')
-        yield self.assert_code(6,  'a = -(5 + 1); -a;')
+        '''Unary expressions'''
+        yield self.assert_code(3, 'return #{1, 2, [3]=3, ["a"]=4, b=5}')
+        yield self.assert_code(5,  'a = -5; return -a')
+        yield self.assert_code(6,  'a = -(5 + 1); return -a')
 
     @tornado.testing.gen_test
     def test_logical_expressions(self):
-        '''ESL: interpretate logical expressions'''
-        yield self.assert_code(4,     '1 and 4;')
-        yield self.assert_code(5,     '1 - 1 and 4 or 5;')
-        yield self.assert_code(False, 'not 5;')
-
-    @tornado.testing.gen_test
-    def test_relative_expressions(self):
-        '''ESL: interpretate equal and relative expressions'''
-        yield self.assert_code(True,  '5 == 5;')
-        yield self.assert_code(False, '5 != 5;')
-        yield self.assert_code(True,  '5 >= 5;')
-        yield self.assert_code(False, '5 >= 6;')
-        yield self.assert_code(True,  '6 >= 5;')
-        yield self.assert_code(False, '6 <= 5;')
-        yield self.assert_code(False, '5 < 5;')
+        '''Logical expressions'''
+        self.dump_lex('return 1 and 4')
+        yield self.assert_code(4, 'return 1 and 4')
+        yield self.assert_code(5, 'return 1 - 1 == 1 and 4 or 5')
+        yield self.assert_code(False, 'return not 5')
 
     @tornado.testing.gen_test
     def test_if_statement(self):
-        '''ESL: interpretate if-elif-else statement'''
+        '''If-elseif-else statement'''
         code = '''\
-            a = 1;
-            b = 0;
-            if (a == 1) {
-                b = 1;
-            }
-            b;
+            a = 1
+            b = 0
+            if a == 1 then
+                b = 1
+            end
+            return b
         '''
         yield self.assert_code(1, code)
 
         code = '''\
-            a = 3;
-            b = 0;
-            if (a == 1) {
-                b = 1;
-            }
-            elif (a == 2) {
-                b = 2;
-            }
-            elif (a == 3) {
-                b = 3;
-            }
-            b;
+            a = 3
+            b = 0
+            if a == 1 then
+                b = 1
+            elseif a == 2 then
+                b = 2
+            elseif a == 3 then
+                b = 3
+            end
+            return b
         '''
         yield self.assert_code(3, code)
 
         code = '''\
-            a = 4;
-            b = 0;
-            if (a == 1) {
-                b = 1;
-            }
-            elif (a == 2) {
-                b = 2;
-            }
-            elif (a == 3) {
-                b = 3;
-            }
-            else {
-                b = 4;
-            }
-            b;
+            a = 4
+            b = 0
+            if a == 1 then
+                b = 1
+            elseif a == 2 then
+                b = 2
+            elseif a == 3 then
+                b = 3
+            else
+                b = 4
+            end
+            return b
         '''
         yield self.assert_code(4, code)
 
     @tornado.testing.gen_test
-    def test_special_if_and_unless(self):
-        '''ESL: interpretate special if and unless'''
-        code = '''\
-            b = 1;
-            a = 5 if (b == 1);
-            a;
+    def test_while_loop(self):
+        '''While loop'''
+        code = '''
+            result = 0
+            count = 0
+            while count < 5 do
+                result = result + 1
+                count = count + 1
+            end
+            return result;
         '''
         yield self.assert_code(5, code)
 
-        code = '''\
-            b = 1;
-            a = 2;
-            a = 5 if (b == 2);
-            a;
+        code = '''
+            result = 0
+            count = 100
+            while count < 1 do
+                result = result + 1
+                count = count + 1
+            end
+            return result;
         '''
-        yield self.assert_code(2, code)
+        yield self.assert_code(0, code)
 
-        code = '''\
-            b = 1;
-            a = 2;
-            a = 5 unless (b == 2);
-            a;
+        code = '''
+            result = 0
+            count = 0
+            repeat
+                result = result + 1
+                count = count + 1
+            until count < 5
+            return result
         '''
         yield self.assert_code(5, code)
-        code = '''\
-            b = 1;
-            a = 2;
-            a = 5 unless (b == 1);
-            a;
+
+        code = '''
+            result = 0
+            count = 100
+            repeat
+                result = result + 1
+                count = count + 1
+            until count < 1
+            return result
         '''
-        yield self.assert_code(2, code)
+        yield self.assert_code(1, code)
 
     @tornado.testing.gen_test
     def test_for_statement(self):
-        '''ESL: interpretate for (expr; expr; expr) {...} statement'''
+        '''Numeric for statement'''
         code = '''\
-            a = 0;
-            for (i = 0; i < 5; i++) {
-                a++;
-            }
-            a;
+            a = 0
+            for i=1, 5 do
+                a = a + 1
+            end
+            return a
         '''
         yield self.assert_code(5, code)
 
         code = '''\
-            a = 0;
-            for (i = 0; i < 5; i++) {
-                for (j = 0; j < 5; j++) {
-                    a++;
-                }
-            }
-            a;
-        '''
-        yield self.assert_code(25, code)
-
-    @tornado.testing.gen_test
-    def test_for_in(self):
-        '''ESL: interpretate for..in statement'''
-        code = '''\
-            a = [1, 2, 3, 4, 5];
-            b = 0;
-            for (i in a) {
-                b += i;
-            }
-            b;
-        '''
-        yield self.assert_code(15, code)
-
-    @tornado.testing.gen_test
-    def test_while_loop(self):
-        '''ESL: interpretate while loop'''
-        code = '''\
-            count = 5;
-            result = 0;
-            while (count > 0) {
-                result += count;
-                count --;
-            }
-            result;
-        '''
-        yield self.assert_code(15, code)
-
-    @tornado.testing.gen_test
-    def test_break_statement(self):
-        '''ESL: interpretate break statement'''
-        code = '''\
-            a = 0;
-            for (i = 0; i < 10; i++) {
-                break;
-                a += 1000;
-            }
-            a;
-        '''
-
-        yield self.assert_code(0, code)
-        code = '''\
-            a = 0;
-            for (i = 0; i < 10; i++) {
-                if (a > 5) {
-                    break;
-                    a += 1000;
-                }
-                a++;
-            }
-            a;
+            a = 0
+            for i=1, 12, 2 do
+                a = a + 1
+            end
+            return a
         '''
         yield self.assert_code(6, code)
 
         code = '''\
-            a = 0;
-            for (i = 0; i < 10; i++) {
-                for (j = 0; j < 2; j++) {
-                    break;
-                    a += 1000;
-                }
-                a++;
-            }
-            a;
+            a = 0
+            for i=1, 12, 2 do
+                for j=1, 5 do
+                    a = a + 1
+                end
+            end
+            return a
         '''
-        yield self.assert_code(10, code)
-
-        # TODO: test for..in break statement
-        # TODO: test while break statement
+        yield self.assert_code(30, code)
 
     @tornado.testing.gen_test
-    def test_continue_statement(self):
-        '''ESL: interpretate continue statement'''
+    def test_for_in(self):
+        '''Generic for statement'''
         code = '''\
-            a = 0;
-            for (i = 0; i < 5; i++) {
-                a++;
-                continue;
-                a += 1000;
-            }
-            a;
+            a = {1, 2, 3, ["b"]=7, c=8, 4, 5}
+            b = 0
+            for k, v in pairs(a) do
+                b = b + v
+            end
+            return b
         '''
-        yield self.assert_code(5, code)
+        yield self.assert_code(30, code)
+
+    @tornado.testing.gen_test
+    def test_break_statement(self):
+        '''Break statement'''
+        code = '''
+            a = 0
+            for i=0, 10 do
+                a = a + 1
+                break
+            end
+            return a
+        '''
+        yield self.assert_code(1, code)
+
+        code = '''
+            a = 0
+            for i=1, 10 do
+                if a > 5 then
+                    break
+                end
+                a = a + 1
+            end
+            return a
+        '''
+        yield self.assert_code(6, code)
 
         code = '''\
-            a = 0;
-            for (i = 0; i < 5; i++) {
-                for (j = 0; j < 5; j++) {
-                    a++;
-                    continue;
-                    a += 1000;
-                }
-            }
-            a;
+            a = 0
+            for i=0, 10 do
+                for j=0, 10 do
+                    if j > 1 then
+                        break
+                    end
+                    a = a + 1
+                end
+                a = a + 1
+            end
+            return a
         '''
-        yield self.assert_code(25, code)
-        # TODO: test for..in continue statement
-        # TODO: test while continue statement
+        yield self.assert_code(33, code)
 
     @tornado.testing.gen_test
     def test_function(self):
-        '''ESL: interpretate function'''
+        '''Function'''
         funcode = '''\
-            function summishe(a, b, c, d) {
-                return a + b + c + d;
-            }
+            function huge_sum(a, b, c, d)
+                return a + b + c + d
+            end
         '''
-        yield self.assert_code(10, funcode + 'summishe(1, 5, 3, 1);')
+        yield self.assert_code(10, funcode + 'return huge_sum(1, 5, 3, 1)')
 
-        def func(a, b):
+        def func(a, b, c=1, *p, **n):
             return a + b
 
-        ctx = context.Context({'func': func})
-        yield self.assert_code(4, 'return func(1, 3);', ctx)
+        ns = esl.Namespace({'func': func})
+        yield self.assert_code(4, 'return func(1, 3);', ns)
 
-        async def func(a, b):
-            return a - b
-
-        ctx = context.Context({'func': func})
-        yield self.assert_code(7, 'return func(12, 5);', ctx)
-
-    @tornado.testing.gen_test
-    def test_function_parameters(self):
-        '''ESL: interpretate function parameters'''
         funcode = '''\
-            function summishe(a, b, c, d) {
-                return a + b + c + d;
-            }
+            function dummy()
+                return 1
+            end
         '''
-        code = funcode + '''summishe(1, b=5, 6);'''
-        yield self.assert_raises(interpreter.RuntimeError, code)
-        code = funcode + '''summishe(1, 2, 3);'''
-        yield self.assert_raises(interpreter.RuntimeError, code)
-        code = funcode + '''summishe(1, 2, 3, 4, 5);'''
-        yield self.assert_raises(interpreter.RuntimeError, code)
-        code = funcode + '''summishe(1, 2, 3, 4, d=5);'''
-        yield self.assert_raises(interpreter.RuntimeError, code)
-        code = funcode + '''summishe(1, 2, 3, 4, m=5);'''
-        yield self.assert_raises(interpreter.RuntimeError, code)
-
-    @tornado.testing.gen_test
-    def test_function_without_parameters(self):
-        '''ESL: interpretate function without parameters'''
-        code = '''\
-            function summishe() {
-                return 2;
-            }
-            return summishe();
-        '''
-        yield self.assert_code(2, code)
+        yield self.assert_code(1, funcode + 'return dummy()')
 
     @tornado.testing.gen_test
     def test_function_namespace(self):
-        '''ESL: interpretate function namespaces'''
+        '''Function namespaces'''
         code = '''\
-            a = 2;
-            function sum(a, b) {
-                a = 5;
-            }
-            sum(4, 6);
-            return a;
+            a = 2
+            function sum(a, b)
+                a = 5
+            end
+            sum(4, 6)
+            return a
         '''
         yield self.assert_code(2, code)
-
-        code = '''\
-            a = 2;
-            function sum(b, c) {
-                a = 5;
-            }
-            sum(4, 6);
-            return a;
-        '''
-        yield self.assert_code(2, code)
-
-        code = '''\
-            a = {"a": 2};
-            function sum(b, c) {
-                a["a"] = 5;
-            }
-            sum(4, 6);
-            return a["a"];
-        '''
-        yield self.assert_code(5, code)
 
     @tornado.testing.gen_test
     def test_return_statement(self):
-        '''ESL: interpretate return statement'''
+        '''Return statement'''
         code = '''\
-            function sumstr(b, c, d) {
-                return b + c + d;
-                return b + c;
-            }
-            result = sumstr("a1", "b5", d="d6");
-            return result;
-            return 2;
+            function sumstr(b, c, d)
+                return b + c + d
+            end
+            result = sumstr("a1", "b5", "d6")
+            return result
         '''
         yield self.assert_code('a1b5d6', code)
 
         code = '''\
-            a = 1;
-            if (a == 1) {
-                return 2;
-            }
-            return 3;
+            a = 1
+            if a == 1 then
+                return 2
+            end
+            a = a + 1
+            return 3
         '''
         yield self.assert_code(2, code)
 
-        code = '''return 1;'''
+        code = '''return 1'''
         yield self.assert_code(1, code)
 
     @tornado.testing.gen_test
-    def test_import(self):
-        '''ESL: interpretate import module'''
-        def return_imported(code):
-            return '''\
-                a = 5;
-            '''
+    def test_block_parsing(self):
+        '''Block parsing'''
+        code = '''
+            function a(x)
+                return 1 + x
+            end
+            function b(x)
+                return 2 + x
+            end
+            function c(meth)
+                return meth
+            end
 
-        code = '''\
-            a = 1;
-            import change;
-            a;
+            z = 1 + c(a or b)(5)
+            return z
         '''
-        ctx = context.Context()
-        ctx.import_handler = return_imported
-        yield self.assert_code(5, code, ctx)
+        yield self.assert_code(7, code)
+
+        code = '''
+            function a(x)
+                return 1 + x
+            end
+            function b(x)
+                return 2 + x
+            end
+
+            c = 5
+
+            z = 1 + c; (a or b)(5)
+            return z
+        '''
+        yield self.assert_code(6, code)
+        #return a
+        #a = b + c(print or io.write)('done')
+        #| a = b + c; (print or io.write)('done')
+
