@@ -72,7 +72,8 @@ class Parser(object):
 
     def p_stat4(self, p):
         '''stat : DO block END'''
-        p[0] = esl.interpreter.Block(p.lineno(0), p[2])
+        p[0] = esl.interpreter.Block(p.lineno(0))
+        p[0].append(p[2])
 
     def p_stat5(self, p):
         '''stat : WHILE exp DO block END'''

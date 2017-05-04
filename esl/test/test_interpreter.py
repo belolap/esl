@@ -91,7 +91,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         ns = esl.Namespace()
         ns.set_global('a', A('c', A('7')))
 
-        a = ns.get('a')
+        a = ns.get_global('a')
         yield self.assert_code('c', 'return a.x;', ns)
         yield self.assert_code('7', 'return a.s.x;', ns)
         yield self.assert_raises(esl.ESLSyntaxError, 'return a._x;', ns)
@@ -439,3 +439,42 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
                     multiline
                     string'''
         yield self.assert_code(tmpl, code)
+
+    @tornado.testing.gen_test
+    def test_namespace(self):
+        '''Namespace and scope'''
+        code = '''\
+        a = 1
+        do
+            a = 2
+        end
+        return a
+        '''
+        yield self.assert_code(2, code)
+
+        code = '''\
+        a = 1
+        do
+            local a = 2
+        end
+        return a
+        '''
+        yield self.assert_code(1, code)
+
+        code = '''\
+        a = 1
+        do
+            local a = nil
+        end
+        return a
+        '''
+        yield self.assert_code(1, code)
+
+        code = '''\
+        do
+            local a = 1
+            a = 2
+        end
+        return a
+        '''
+        yield self.assert_code(None, code)

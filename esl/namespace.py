@@ -10,35 +10,6 @@ import collections
 _DEFAULT = object()
 
 
-class Variables(collections.MutableMapping):
-
-    def __init__(self, initial=None):
-        self.__values = {}
-        if initial is not None:
-            assert isinstance(initial, (dict, Variables))
-            for k, v in initial.items():
-                if not k.startswith('_'):
-                    self.__values[k] = v
-
-    def __getitem__(self, key):
-        return self.__values[key]
-
-    def __setitem__(self, key, value):
-        if key.startswith('_'):
-            raise KeyError('key mustn\'t starts with _')
-        self.__values[key] = value
-
-    def __delitem__(self, key):
-        del self.__values[key]
-
-    def __iter__(self):
-        for key in self.__values:
-            yield key
-
-    def __len__(self):
-        return len(self.__values)
-
-
 class Namespace(object):
 
     def __init__(self, globals_dict=None, locals_dict=None,
@@ -47,25 +18,22 @@ class Namespace(object):
             globals_dict = {'__builtins__': {}}
         assert isinstance(globals_dict, dict)
         self.__globals = globals_dict
-        self.__locals = Variables(locals_dict)
 
-    def has_local(self, key):
-        return key in self.__locals
+        if locals_dict is None:
+            locals_dict = {}
+        assert isinstance(locals_dict, dict)
+        self.__locals = locals_dict
 
-    def has_global(self, key):
-        return key in self.__globals
+    # Get dicts for function call
+    @property
+    def globals(self):
+        return self.__globals
 
-    def get(self, key, default=_DEFAULT):
-        assert isinstance(key, str)
-        if key in self.__locals:
-            return self.__locals[key]
-        elif key in self.__globals:
-            return self.__globals[key]
+    @property
+    def locals(self):
+        return self.__locals
 
-        if default == _DEFAULT:
-            raise NameError('key `%s\' is not defined.' % key)
-        return default
-
+    # Globals and locals manipulation
     def set_global(self, key, value):
         assert isinstance(key, str)
         self.__globals[key] = value
@@ -74,6 +42,37 @@ class Namespace(object):
         assert isinstance(key, str)
         self.__locals[key] = value
 
+    def del_global(self, key):
+        assert isinstance(key, str)
+        del self.__globals[key]
+
+    def del_local(self, key):
+        assert isinstance(key, str)
+        del self.__locals[key]
+
+    def get_global(self, key, default=_DEFAULT):
+        try:
+            return self.__globals[key]
+        except KeyError:
+            if default == _DEFAULT:
+                raise
+            return default
+
+    def get_local(self, key, default=_DEFAULT):
+        try:
+            return self.__locals[key]
+        except KeyError:
+            if default == _DEFAULT:
+                raise
+            return default
+
+    def has_global(self, key):
+        return key in self.__globals
+
+    def has_local(self, key):
+        return key in self.__locals
+
+    # Object's attributes manipulation
     def check_key(self, obj, key):
         assert isinstance(key, str)
         if key.startswith('_'):
@@ -94,6 +93,10 @@ class Namespace(object):
         self.check_key(obj, key)
         setattr(obj, key, value)
 
+    def del_attribute(self, obj, key):
+        self.check_key(obj, key)
+        delattr(obj, key)
+
     def get_item(self, obj, key, default=_DEFAULT):
         self.check_key(obj, key)
         try:
@@ -107,18 +110,15 @@ class Namespace(object):
 
     def set_item(self, obj, key, value):
         self.check_key(obj, key)
-        obj[key] = val
+        obj[key] = value
 
+    def del_item(self, obj, key):
+        self.check_key(obj, key)
+        del obj[key]
+
+    # New namespace
     def clone(self):
-        ctx = Namespace(globals_dict=self.__globals)
+        ns = Namespace(globals_dict=self.__globals)
         for k, v in self.__locals.items():
-            ctx.set_local(k, v)
-        return ctx
-
-    @property
-    def globals(self):
-        return self.__globals
-
-    @property
-    def locals(self):
-        return self.__locals
+            ns.set_local(k, v)
+        return ns

@@ -94,8 +94,8 @@ class Assignment(Statement):
 
     def __init__(self, lineno, left, value, local=False):
         super().__init__(lineno)
-        self.left = left # varlist | namelist
-        self.value = value # explist, XXX: check for None
+        self.left = left
+        self.value = value
         self.local = local
 
     async def touch(self, interpreter, ns):
@@ -115,30 +115,40 @@ class Assignment(Statement):
 
         for i in range(0, count):
             item = self.left.children[i]
+            value = values[i]
 
             if isinstance(item, Variable):
                 name = await item.name.touch(interpreter, ns)
-                if item.left is None:
-                    if ns.has_local(name):
-                        ns.set_local(name, values[i])
-                    else:
-                        ns.set_global(name, values[i])
-                else:
-                    obj = await item.left.touch(interpreter, ns)
-
-                    if item.proto == 'dict':
-                        ns.set_item(obj, name, values[i])
-                    elif item.proto == 'attr':
-                        ns.set_attribute(obj, name, values[i])
-                    else:
-                        raise AssertionError('unknow protocol')
-
-            elif isinstance(item, Name):
-                name = await item.touch(interpreter, ns)
-                ns.set_local(name, values[i])
-
             else:
-                raise NotImplementedError('unknown type {}'.format(type(item)))
+                name = await item.touch(interpreter, ns)
+
+            if isinstance(item, Variable) and item.left is not None:
+                obj = await item.left.touch(interpreter, ns)
+
+                try:
+                    if value is None:
+                        if name in obj:
+                            ns.del_item(obj, name)
+                    else:
+                        ns.set_item(obj, name, value)
+                except TypeError:
+                    if value is None:
+                        if ns.has_attribute(obj, name):
+                            ns.del_attribute(obj, name)
+                    else:
+                        ns.set_attribute(obj, name, value)
+            else:
+                if self.local:
+                    if value is None:
+                        if ns.has_local(name):
+                            ns.del_local(name)
+                    else:
+                        ns.set_local(name, value)
+                else:
+                    if ns.has_local(name):
+                        ns.set_local(name, value)
+                    else:
+                        ns.set_global(name, value)
 
         interpreter.line_stack.pop()
 
@@ -340,7 +350,9 @@ class Function(Statement):
         for item in self.name.children:
             if parent is None:
                 n = await item.touch(interpreter, ns)
-                parent = ns.get(n)
+                parent = ns.get_local(n, None)
+                if parent is None:
+                    parent = ns.get_global(n, None)
             else:
                 parent = parent[n]
             if parent is None:
@@ -451,7 +463,9 @@ class Variable(Node):
             name = await self.name.touch(interpreter, ns)
 
         if self.left is None:
-            result = ns.get(name, None)
+            result = ns.get_local(name, None)
+            if result is None:
+                result = ns.get_global(name, None)
         else:
             left = await self.left.touch(interpreter, ns)
             if self.proto == 'dict':
@@ -516,7 +530,7 @@ class FunctionCall(Node):
             keys = ba.arguments.keys()
             code = '__lua_func({})'.format(', '.join(keys))
 
-            locals_dict = dict([(k, v) for k, v in ns.locals.items()])
+            locals_dict = ns.locals.copy()
             locals_dict['__lua_func'] = func
             result = eval(code, ns.globals, locals_dict)
 
