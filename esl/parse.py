@@ -441,4 +441,4 @@ class Parser(object):
                           'at line {} col {}'.format(p.value, p.lineno, column))
 
     def parse(self, code):
-        return self.yacc.parse(code, lexer=self.lexer.lexer)
+        return self.yacc.parse(code, lexer=self.lexer.lexer, tracking=True)

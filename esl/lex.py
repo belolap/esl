@@ -150,10 +150,15 @@ class Lexer(object):
         t.lexer.level = t.value.count('=')
         t.lexer.begin('ccode')
 
+    def t_ccode_newlone(self, t):
+        r'\n+'
+        t.lexer.lineno += len(t.value)
+
     def t_ccode_end(self, t):
         r'\]=*\]'
         if t.value.count('=') == t.lexer.level:
             t.lexer.begin('INITIAL')
+            t.lexer.lineno += t.value.count('\n')
             if not t.lexer.is_comment:
                 t.value = t.lexer.lexdata[t.lexer.start_pos-1:t.lexer.lexpos-1]
                 t.type = 'STRING'
