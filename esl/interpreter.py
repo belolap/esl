@@ -468,12 +468,10 @@ class Variable(Node):
                 result = ns.get_global(name, None)
         else:
             left = await self.left.touch(interpreter, ns)
-            if self.proto == 'dict':
-                result = ns.get_key(left, name, None)
-            elif self.proto == 'attr':
+            try:
+                result = ns.get_item(left, name, None)
+            except TypeError:
                 result = ns.get_attribute(left, name, None)
-            else:
-                raise AssertionError('unknown proto')
         return result
 
 
