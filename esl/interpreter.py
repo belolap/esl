@@ -734,7 +734,7 @@ class Name(Node):
 
 class Interpreter(object):
 
-    __extensions__ = ['pairs', 'next']
+    __extensions__ = ['pairs', 'next', 'assert', 'error']
 
     def __init__(self, code, bytecode=None, namespace=None,
                  extensions=None, debug=True):
@@ -769,8 +769,13 @@ class Interpreter(object):
 
         ns = self.__namespace
 
+        reserved_map = {
+            'assert': 'assert_',
+        }
+
         for extension in extensions:
-            ns.set_global(extension, getattr(esl.extensions, extension))
+            func = reserved_map.get(extension, extension)
+            ns.set_global(extension, getattr(esl.extensions, func))
 
         ns.globals.update(kwargs)
 

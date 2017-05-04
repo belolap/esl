@@ -29,5 +29,16 @@ def next(table, key=None):
     key = keys[index]
     return key, table[key]
 
+
 def pairs(table):
     return next, table, None
+
+
+def error(message, level=None):
+    # level is not used
+    raise esl.ESLRuntimeError(message)
+
+
+def assert_(expression, message):
+    if not expression:
+        error(message)
