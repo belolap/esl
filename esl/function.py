@@ -10,3 +10,4 @@ class Function(object):
     def __init__(self, parlist, body):
         self.parlist = parlist
         self.body = body
+        self.self = None

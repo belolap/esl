@@ -364,6 +364,8 @@ class Function(Statement):
             else:
                 ns.set_global(name, func)
         else:
+            if self.name.colon:
+                func.self = parent
             parent[name] = func
 
         interpreter.line_stack.pop()
@@ -495,19 +497,32 @@ class Constant(Node):
 
 class FunctionCall(Node):
 
-    def __init__(self, lineno, prefixexp, name, args):
+    def __init__(self, lineno, prefixexp, name, args, colon=False):
         super().__init__(lineno)
         self.prefixexp = prefixexp
         self.name = name
         self.args = args
+        self.colon = colon
 
     async def touch(self, interpreter, ns):
         interpreter.line_stack.append(self.lineno)
-        func = await self.prefixexp.touch(interpreter, ns)
+
+        obj = await self.prefixexp.touch(interpreter, ns)
+        if self.name is None:
+            func = obj
+        else:
+            name = await self.name.touch(interpreter, ns)
+            if isinstance(obj, esl.table.Table):
+                func = obj[name]
+            else:
+                func = getattr(obj, name)
 
         ns = ns.clone()
 
         if isinstance(func, esl.function.Function):
+            if self.colon:
+                ns.set_local('self', func.self)
+
             if func.parlist is not None:
                 count = len(func.parlist.namelist.children)
                 for i in range(0, count):
@@ -522,9 +537,16 @@ class FunctionCall(Node):
                 if isinstance(func, type(None)):
                     func = 'nil'
                 raise TypeError('{} is not callable'.format(str(func)))
+
             args = []
             for arg in self.args.children:
                 args.append(await arg.touch(interpreter, ns))
+
+            if inspect.ismethod(func):
+                if self.colon:
+                    args.insert(0, func.__self__)
+                func = func.__func__
+
             ba = inspect.signature(func).bind(*args)
             for k, v in ba.arguments.items():
                 ns.set_local(k, v)

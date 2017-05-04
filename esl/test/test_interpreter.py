@@ -478,3 +478,33 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         return a
         '''
         yield self.assert_code(None, code)
+
+    @tornado.testing.gen_test
+    def test_objects_functions(self):
+        '''Objects's functions'''
+        code = '''\
+            a = {b=1}
+            function a:test()
+                return self.b;
+            end
+            return a:test()
+        '''
+        yield self.assert_code(1, code)
+
+        class A(object):
+            def __init__(self):
+                self.value = 1
+            def test(self):
+                if isinstance(self, esl.Table):
+                    return self['value']
+                return self.value
+        ns = esl.Namespace({'a': A()})
+
+        code = '''return a:test()'''
+        yield self.assert_code(1, code, ns)
+
+        code = '''
+            b = {value=2}
+            return a.test(b)
+        '''
+        yield self.assert_code(2, code, ns)

@@ -262,7 +262,8 @@ class Parser(object):
         if len(p) == 3:
             p[0] = esl.interpreter.FunctionCall(p.lineno(0), p[1], None, p[2])
         else:
-            p[0] = esl.interpreter.FunctionCall(p.lineno(0), p[1], p[3], p[4])
+            p[0] = esl.interpreter.FunctionCall(
+                p.lineno(0), p[1], p[3], p[4], True)
 
     def p_args(self, p):
         '''args : PARANTHESES_L PARANTHESES_R
