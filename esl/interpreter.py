@@ -518,6 +518,10 @@ class FunctionCall(Node):
             result = await func.body.touch(interpreter, ns)
 
         else:
+            if not callable(func):
+                if isinstance(func, type(None)):
+                    func = 'nil'
+                raise TypeError('{} is not callable'.format(str(func)))
             args = []
             for arg in self.args.children:
                 args.append(await arg.touch(interpreter, ns))
