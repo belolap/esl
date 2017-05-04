@@ -19,9 +19,9 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
     def setUp(self):
         super().setUp()
 
-    def dump_lex(self, code):
+    def dump_lex(self, code, debug=False):
         lexer = esl.lex.Lexer()
-        lexer.build()
+        lexer.build(debug=debug)
         lexer.lexer.input(code)
         for tok in lexer.lexer:
             logger.debug(tok)
