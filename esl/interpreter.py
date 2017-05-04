@@ -116,9 +116,8 @@ class Assignment(Statement):
         for i in range(0, count):
             item = self.left.children[i]
 
-            name = await item.name.touch(interpreter, ns)
-
             if isinstance(item, Variable):
+                name = await item.name.touch(interpreter, ns)
                 if item.left is None:
                     if ns.has_local(name):
                         ns.set_local(name, values[i])
@@ -135,6 +134,7 @@ class Assignment(Statement):
                         raise AssertionError('unknow protocol')
 
             elif isinstance(item, Name):
+                name = await item.touch(interpreter, ns)
                 ns.set_local(name, values[i])
 
             else:
