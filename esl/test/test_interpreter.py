@@ -411,7 +411,31 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             return z
         '''
         yield self.assert_code(6, code)
-        #return a
-        #a = b + c(print or io.write)('done')
-        #| a = b + c; (print or io.write)('done')
 
+    @tornado.testing.gen_test
+    def test_comments(self):
+        '''Test comments'''
+        code = '''\
+        -- simple comment
+        local a = 1
+        return a
+        '''
+        yield self.assert_code(1, code)
+
+        code = '''\
+        -- single line
+        --[[
+            multiline comment
+        ]]
+        --[=[
+            anoher. lets a[b["a"]] = 5
+        ]=]
+        local a = [[This is
+                    multiline
+                    string]]
+        return a
+        '''
+        tmpl = '''This is
+                    multiline
+                    string'''
+        yield self.assert_code(tmpl, code)

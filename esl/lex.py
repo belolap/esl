@@ -14,6 +14,10 @@ class LexError(Exception):
 
 class Lexer(object):
 
+    states = (
+        ('ccode', 'exclusive'),
+    )
+
     keywords = collections.OrderedDict([
         ('do', 'DO'),
         ('while', 'WHILE'),
@@ -133,8 +137,34 @@ class Lexer(object):
 
     t_ignore = ' \t'
 
+    def t_COMMENTS(self, t):
+        r'--(?!\[=*\[).*'
+
+    def t_ccode(self, t):
+        r'(?:--)?\[=*\['
+        t.lexer.start_pos = t.lexer.lexpos
+        if t.value.startswith('--'):
+            t.lexer.is_comment = True
+        else:
+            t.lexer.is_comment = False
+        t.lexer.level = t.value.count('=')
+        t.lexer.begin('ccode')
+
+    def t_ccode_end(self, t):
+        r'\]=*\]'
+        if t.value.count('=') == t.lexer.level:
+            t.lexer.begin('INITIAL')
+            if not t.lexer.is_comment:
+                t.value = t.lexer.lexdata[t.lexer.start_pos-1:t.lexer.lexpos-1]
+                t.type = 'STRING'
+                return t
+
+    t_ccode_ignore = ''
+
+    def t_ccode_error(self, t):
+        t.lexer.skip(1)
+
     def t_error(self, t):
-        #XXX: rewrite
         msg = ('Illegal character `{}\' '
                'at line {}'.format(t.value[0], t.lexer.lineno))
         raise LexError(msg)
