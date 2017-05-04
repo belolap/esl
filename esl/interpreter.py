@@ -779,8 +779,8 @@ class Interpreter(object):
         except Exception as e:
             # Error message
             msg = str(e)
-            msg = msg[0].upper() + msg[1:]
-            logger.error(msg)
+            msg = msg[0].lower() + msg[1:]
+            logger.error('Error: {}'.format(msg))
 
             lines = self.__code.split('\n')
 
@@ -816,8 +816,6 @@ class Interpreter(object):
                                                                 line, fun))
                 logger.debug('...   {}'.format(inst))
 
-            msg = str(e)
-            msg = msg[0].lower() + msg[1:]
-            raise ESLRuntimeError(str(e))
+            raise ESLRuntimeError(msg)
 
         return result
