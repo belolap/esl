@@ -302,6 +302,8 @@ class GenericFor(Statement):
             evaluated = await expression.touch(interpreter, ns)
             if isinstance(evaluated, (list, tuple)):
                 params += evaluated
+            else:
+                params.append(evaluated)
         if len(params) < 3:
             params += [None] * (3 - len(params))
 
@@ -310,8 +312,17 @@ class GenericFor(Statement):
             names.append(await name.touch(interpreter, ns))
 
         fun, obj, key = params[0:3]
+        if hasattr(fun, '__aiter__'):
+            fun = await fun.__aiter__()
+        print(10, fun, obj, key, inspect.isgeneratorfunction(fun))
         while True:
-            values = fun(obj, key)
+            if hasattr(fun, '__aiter__'):
+                try:
+                    values = await fun.__anext__()
+                except StopAsyncIteration:
+                    values = None
+            else:
+                values = fun(obj, key)
             if values is None:
                 break
             if not isinstance(values, (list, tuple)):
