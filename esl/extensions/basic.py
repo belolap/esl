@@ -8,7 +8,7 @@ import esl
 
 
 def next(table, key=None):
-    assert isinstance(table, esl.Table)
+    assert isinstance(table, esl.Table), 'table must be esl.Table'
     length = len(table)
     if key is None:
         key = 0
