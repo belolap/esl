@@ -20,6 +20,14 @@ import esl.extensions
 logger = logging.getLogger('esl')
 
 
+DEFAULT_EXTENSIONS = []
+
+for k in dir(esl.extensions):
+    f = getattr(esl.extensions, k)
+    if inspect.isfunction(f):
+        DEFAULT_EXTENSIONS.append(k)
+
+
 class ESLSyntaxError(Exception):
     pass
 
@@ -773,7 +781,6 @@ class Name(Node):
 
 class Interpreter(object):
 
-    __extensions__ = ['pairs', 'next', 'assert', 'error']
 
     def __init__(self, code, bytecode=None, namespace=None,
                  extensions=None, debug=True):
@@ -804,7 +811,7 @@ class Interpreter(object):
 
     def add_extensions(self, extensions=None, **kwargs):
         if extensions is None:
-            extensions = self.__extensions__
+            extensions = DEFAULT_EXTENSIONS
 
         ns = self.__namespace
 
