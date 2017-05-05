@@ -24,7 +24,7 @@ DEFAULT_EXTENSIONS = []
 
 for k in dir(esl.extensions):
     f = getattr(esl.extensions, k)
-    if inspect.isfunction(f):
+    if inspect.isfunction(f) or inspect.ismodule(f):
         DEFAULT_EXTENSIONS.append(k)
 
 
