@@ -7,31 +7,67 @@ __licence__ = 'For license information see LICENSE'
 import esl
 
 
-def next(table, key=None):
-    assert isinstance(table, esl.Table), 'table must be esl.Table'
-    length = len(table)
-    if key is None:
-        key = 0
-    if isinstance(key, int):
-        if key < length:
-            key += 1
-            return key, table[key]
-        elif key == length:
-            key = None
+def next(obj, key=None):
+    if isinstance(obj, list):
+        keys = range(0, len(obj))
+    elif isinstance(obj, dict):
+        keys = list(sorted(obj.keys()))
+    elif isinstance(obj, esl.Table):
+        keys = [x for x in obj]
 
-    keys = [x for x in table]
-    if key is None:
-        index = length
-    else:
-        index = keys.index(key) + 1
+    length = len(obj)
+
+    if isinstance(obj, esl.Table):
+        if key is None:
+            key = 0
+
+        if isinstance(key, int):
+            if key < length:
+                key += 1
+                return key, obj[key]
+            elif key == length:
+                key = None
+
+        if key is None:
+            index = length
+        else:
+            index = keys.index(key) + 1
+
+    elif isinstance(obj, list):
+        if key is None:
+            key = 0
+        else:
+            key += 1
+
+        if key >= length:
+            return None
+
+        index = key
+
+    elif isinstance(obj, dict):
+        if key is None:
+            index = 0
+        else:
+            index = keys.index(key) + 1
+
     if (index >= len(keys)):
         return None
+
     key = keys[index]
-    return key, table[key]
+
+    return key, obj[key]
 
 
-def pairs(table):
-    return next, table, None
+def pairs(obj):
+    return next, obj, None
+
+
+async def ipairs(obj):
+    if hasattr(obj, '__aiter__'):
+        func = await obj.__aiter__()
+    elif hasattr(obj, '__iter__'):
+        func = obj(iter)
+    return func, obj, 0
 
 
 def error(message, level=None):

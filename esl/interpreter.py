@@ -320,21 +320,27 @@ class GenericFor(Statement):
             names.append(await name.touch(interpreter, ns))
 
         fun, obj, key = params[0:3]
-        if hasattr(fun, '__aiter__'):
-            fun = await fun.__aiter__()
-        print(10, fun, obj, key, inspect.isgeneratorfunction(fun))
+
         while True:
-            if hasattr(fun, '__aiter__'):
+            if hasattr(fun, '__anext__'):
                 try:
-                    values = await fun.__anext__()
+                    values = (None, await fun.__anext__())
+                except StopAsyncIteration:
+                    values = None
+            elif hasattr(fun, '__next__'):
+                try:
+                    values = (None, await fun.__next__())
                 except StopAsyncIteration:
                     values = None
             else:
                 values = fun(obj, key)
+
             if values is None:
                 break
+
             if not isinstance(values, (list, tuple)):
                 values = [values]
+
             for k, v in zip(names, values):
                 ns.set_local(k, v)
 

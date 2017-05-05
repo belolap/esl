@@ -508,3 +508,44 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             return a.test(b, 20)
         '''
         yield self.assert_code(22, code, ns)
+
+    @tornado.testing.gen_test
+    def test_iterators(self):
+        '''Iterators'''
+        code = '''
+            result = 0
+            for k, v in pairs(a) do
+                result = result + v
+            end
+            return result
+        '''
+
+        yield self.assert_code(6, 'a = {1, 2, 3}' + code)
+
+        ns = esl.Namespace({'a': {'a': 1, 'b': 2, 'c': 3, 'd': 4}})
+        yield self.assert_code(10, code, ns)
+
+        ns = esl.Namespace({'a': [1, 2, 3, 4, 5]})
+        yield self.assert_code(15, code, ns)
+
+        # Generators
+        class A(object):
+            def __init__(self):
+                self.number = 0
+            async def __aiter__(self):
+                return self
+            async def __anext__(self):
+                self.number += 1
+                if self.number > 10:
+                    raise StopAsyncIteration('finished')
+                return self.number
+
+        code = '''
+            result = 0
+            for k, v in ipairs(a) do
+                result = result + v
+            end
+            return result
+        '''
+        ns = esl.Namespace({'a': A()})
+        yield self.assert_code(55, code, ns)
