@@ -822,12 +822,12 @@ class Interpreter(object):
         ns = self.__namespace
 
         reserved_map = {
-            'assert': 'assert_',
+            'assert_': 'assert',
         }
 
         for extension in extensions:
-            func = reserved_map.get(extension, extension)
-            ns.set_global(extension, getattr(esl.extensions, func))
+            name = reserved_map.get(extension, extension)
+            ns.set_global(name, getattr(esl.extensions, extension))
 
         ns.globals.update(kwargs)
 
