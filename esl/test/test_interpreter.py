@@ -549,3 +549,15 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         '''
         ns = esl.Namespace({'a': A()})
         yield self.assert_code(55, code, ns)
+
+    @tornado.testing.gen_test
+    def test_concat(self):
+        '''Concat'''
+        code = '''return "a" .. "b"'''
+        yield self.assert_code('ab', code)
+
+        code = '''return 1 .. "b"'''
+        yield self.assert_code('1b', code)
+
+        code = '''return "a" .. 1'''
+        yield self.assert_code('a1', code)

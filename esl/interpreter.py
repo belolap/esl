@@ -723,6 +723,21 @@ class Append(Node):
         self.left = left
         self.right = right
 
+    async def touch(self, interpreter, ns):
+        interpreter.line_stack.append(self.lineno)
+
+        left = await self.left.touch(interpreter, ns)
+        right = await self.right.touch(interpreter, ns)
+
+        if (not isinstance(left, (str, int)) or
+            not isinstance(right, (str, int))):
+            raise TypeError('can concate only strings or numbers')
+
+        result = str(left) + str(right)
+
+        interpreter.line_stack.pop()
+        return result
+
 
 class Arithmetic(Node):
 

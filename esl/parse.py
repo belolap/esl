@@ -282,7 +282,7 @@ class Parser(object):
 
     def p_function(self, p):
         '''function : FUNCTION funcbody'''
-        raise NotImplementedError('function is not ready yet')
+        raise NotImplementedError('function is not ready')
 
     def p_funcbody(self, p):
         '''funcbody : PARANTHESES_L parlist PARANTHESES_R block END
