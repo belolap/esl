@@ -821,6 +821,8 @@ class Interpreter(object):
         except Exception as e:
             # Error message
             msg = str(e)
+            if not msg:
+                msg = '(no message)'
             msg = msg[0].lower() + msg[1:]
             logger.error('Error: {}'.format(msg))
 
