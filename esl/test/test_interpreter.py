@@ -494,17 +494,17 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         class A(object):
             def __init__(self):
                 self.value = 1
-            def test(self):
+            def test(self, increment):
                 if isinstance(self, esl.Table):
-                    return self['value']
-                return self.value
+                    return self['value'] + increment
+                return self.value + increment
         ns = esl.Namespace({'a': A()})
 
-        code = '''return a:test()'''
-        yield self.assert_code(1, code, ns)
+        code = '''return a:test(10)'''
+        yield self.assert_code(11, code, ns)
 
         code = '''
             b = {value=2}
-            return a.test(b)
+            return a.test(b, 20)
         '''
-        yield self.assert_code(2, code, ns)
+        yield self.assert_code(22, code, ns)
