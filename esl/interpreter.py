@@ -147,11 +147,7 @@ class Assignment(Statement):
                         ns.set_attribute(obj, name, value)
             else:
                 if self.local:
-                    if value is None:
-                        if ns.has_local(name):
-                            ns.del_local(name)
-                    else:
-                        ns.set_local(name, value)
+                    ns.set_local(name, value)
                 else:
                     if ns.has_local(name):
                         ns.set_local(name, value)
