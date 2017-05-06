@@ -568,22 +568,10 @@ class FunctionCall(Node):
                     args.insert(0, func.__self__)
                 func = func.__func__
 
-            ba = inspect.signature(func).bind(*args)
-            for k, v in ba.arguments.items():
-                ns.set_local(k, v)
-
-            locals_dict = ns.locals.copy()
-            locals_dict['__lua_func'] = func
-
-            keys = ba.arguments.keys()
-            code = '__lua_func({})'.format(', '.join(keys))
             if inspect.iscoroutinefunction(func):
-                code += '.send(None)'
-
-            try:
-                result = eval(code, ns.globals, locals_dict)
-            except StopIteration as e:
-                result = e.value
+                result = await func(*args)
+            else:
+                result = func(*args)
 
         interpreter.returning = False
         interpreter.line_stack.pop()
