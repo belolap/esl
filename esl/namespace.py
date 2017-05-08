@@ -74,8 +74,8 @@ class Namespace(object):
 
     # Object's attributes manipulation
     def check_key(self, obj, key):
-        assert isinstance(key, str)
-        if key.startswith('_'):
+        assert isinstance(key, (str, int))
+        if isinstance(key, str) and key.startswith('_'):
             raise KeyError('access denied')
 
     def get_attribute(self, obj, key, default=_DEFAULT):

@@ -715,7 +715,9 @@ class Append(Node):
 
         if (not isinstance(left, (str, int)) or
             not isinstance(right, (str, int))):
-            raise TypeError('can concate only strings or numbers')
+            raise TypeError('can concate only strings or numbers, '
+                            'got `{} .. {}\''.format(type(left).__name__,
+                                                     type(right).__name__))
 
         result = str(left) + str(right)
 

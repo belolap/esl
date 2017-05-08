@@ -4,7 +4,8 @@ __author__ = 'Gennady Kovalev <gik@bigur.ru>'
 __copyright__ = '(c) 2016-2017 Business group for development management'
 __licence__ = 'For license information see LICENSE'
 
-import esl
+import esl.table
+import esl.interpreter
 
 
 def next(obj, key=None):
@@ -12,12 +13,12 @@ def next(obj, key=None):
         keys = range(0, len(obj))
     elif isinstance(obj, dict):
         keys = list(sorted(obj.keys()))
-    elif isinstance(obj, esl.Table):
+    elif isinstance(obj, esl.table.Table):
         keys = [x for x in obj]
 
     length = len(obj)
 
-    if isinstance(obj, esl.Table):
+    if isinstance(obj, esl.table.Table):
         if key is None:
             key = 0
 
@@ -72,7 +73,7 @@ async def ipairs(obj):
 
 def error(message, level=None):
     # level is not used
-    raise esl.ESLRuntimeError(message)
+    raise esl.interpreter.ESLRuntimeError(message)
 
 
 def assert_(expression, message):
