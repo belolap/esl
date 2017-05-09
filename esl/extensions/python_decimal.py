@@ -12,7 +12,7 @@ def new(val):
 
 
 __extension__ = {
-    'decimal': {
+    'python_decimal': {
         'new': new,
     }
 }
