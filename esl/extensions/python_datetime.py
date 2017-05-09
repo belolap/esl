@@ -10,3 +10,9 @@ import datetime
 def strftime(date, frmt):
     if isinstance(date, datetime.datetime):
         return date.strftime(frmt)
+
+__extension__ = {
+    'python_datetime': {
+        'strftime': strftime,
+    }
+}

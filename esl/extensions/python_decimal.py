@@ -9,3 +9,10 @@ import decimal
 
 def new(val):
     return decimal.Decimal(val)
+
+
+__extension__ = {
+    'decimal': {
+        'new': new,
+    }
+}

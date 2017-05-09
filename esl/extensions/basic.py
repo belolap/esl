@@ -8,7 +8,7 @@ import esl.table
 import esl.interpreter
 
 
-def next(obj, key=None):
+def next_(obj, key=None):
     if isinstance(obj, list):
         keys = range(0, len(obj))
     elif isinstance(obj, dict):
@@ -60,7 +60,7 @@ def next(obj, key=None):
 
 
 def pairs(obj):
-    return next, obj, None
+    return next_, obj, None
 
 
 async def ipairs(obj):
@@ -79,3 +79,12 @@ def error(message, level=None):
 def assert_(expression, message):
     if not expression:
         error(message)
+
+
+__extension__ = {
+    'next': next_,
+    'pairs': pairs,
+    'ipairs': ipairs,
+    'error': error,
+    'assert': assert_,
+}

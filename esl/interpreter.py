@@ -20,14 +20,6 @@ import esl.extensions
 logger = logging.getLogger('esl')
 
 
-DEFAULT_EXTENSIONS = []
-
-for k in dir(esl.extensions):
-    f = getattr(esl.extensions, k)
-    if inspect.isfunction(f) or inspect.ismodule(f):
-        DEFAULT_EXTENSIONS.append(k)
-
-
 class ESLSyntaxError(Exception):
     pass
 
@@ -713,8 +705,8 @@ class Append(Node):
         left = await self.left.touch(interpreter, ns)
         right = await self.right.touch(interpreter, ns)
 
-        if (not isinstance(left, (str, int)) or
-            not isinstance(right, (str, int))):
+        if (not isinstance(left, (str, int, float)) or
+            not isinstance(right, (str, int, float))):
             raise TypeError('can concate only strings or numbers, '
                             'got `{} .. {}\''.format(type(left).__name__,
                                                      type(right).__name__))
@@ -818,7 +810,7 @@ class Interpreter(object):
 
     def add_extensions(self, extensions=None, **kwargs):
         if extensions is None:
-            extensions = DEFAULT_EXTENSIONS
+            extensions = esl.extensions.__extension__
 
         ns = self.__namespace
 
@@ -826,9 +818,8 @@ class Interpreter(object):
             'assert_': 'assert',
         }
 
-        for extension in extensions:
-            name = reserved_map.get(extension, extension)
-            ns.set_global(name, getattr(esl.extensions, extension))
+        for k, v in extensions.items():
+            ns.set_global(k, v)
 
         ns.globals.update(kwargs)
 

@@ -20,3 +20,11 @@ def new(table=None):
 def append(list_, value):
     assert isinstance(list_, list), 'list must be pythons\' list'
     list_.append(value)
+
+
+__extension__ = {
+    'python_list': {
+        'new': new,
+        'append': append,
+    }
+}
