@@ -11,8 +11,8 @@ Package: python3-esl
 Architecture: all
 Depends: ${python3:Depends}, ${misc:Depends}, python3-ply
 Description: simple scripting language for Python 3
- This is javascript like simple scripting language to
+ This is LUA-like simple scripting language to
  use in Python 3 async systems. It useful to allow user's
- create custom scripts without reinstall/restart whole systems.
+ embed custom scripts into Python applications.
  .
  Tested in todnado async io loops.

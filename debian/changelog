@@ -1,3 +1,9 @@
+esl (1.0.0) UNRELEASED; urgency=medium
+
+  * New LUA syntax w/o builtin libraries
+
+ -- Gennady Kovalev <gik@bigur.ru>  Wed, 10 May 2017 00:29:38 +0300
+
 esl (0.0.2) unstable; urgency=medium
 
   * Full async support with basic syntax.

@@ -4,7 +4,7 @@ from setuptools import setup
 
 
 setup(name='esl',
-      version='0.0.2',
+      version='1.0.0',
       author='Gennady Kovalev <gik@bigur.ru>',
       description='Scripting language with LUA syntax to embed into '
                   'Python 3 async applications',
