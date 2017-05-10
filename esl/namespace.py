@@ -78,17 +78,6 @@ class Namespace(object):
         if isinstance(key, str) and key.startswith('_'):
             raise KeyError('access denied')
 
-    def get_attribute(self, obj, key, default=_DEFAULT):
-        self.check_key(obj, key)
-        try:
-            value = getattr(obj, key)
-        except AttributeError:
-            if default == _DEFAULT:
-                raise
-            else:
-                value = default
-        return value
-
     def set_attribute(self, obj, key, value):
         self.check_key(obj, key)
         setattr(obj, key, value)
@@ -97,11 +86,14 @@ class Namespace(object):
         self.check_key(obj, key)
         delattr(obj, key)
 
-    def get_item(self, obj, key, default=_DEFAULT):
+    def has_attribute(self, obj, key):
+        return hasattr(obj, key)
+
+    def get_attribute(self, obj, key, default=_DEFAULT):
         self.check_key(obj, key)
         try:
-            value = obj[key]
-        except KeyError:
+            value = getattr(obj, key)
+        except AttributeError:
             if default == _DEFAULT:
                 raise
             else:
@@ -115,6 +107,20 @@ class Namespace(object):
     def del_item(self, obj, key):
         self.check_key(obj, key)
         del obj[key]
+
+    def get_item(self, obj, key, default=_DEFAULT):
+        self.check_key(obj, key)
+        try:
+            value = obj[key]
+        except KeyError:
+            if default == _DEFAULT:
+                raise
+            else:
+                value = default
+        return value
+
+    def has_item(self, obj, key):
+        return key in obj
 
     # New namespace
     def clone(self):
