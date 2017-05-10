@@ -871,6 +871,6 @@ class Interpreter(object):
                                                                 line, fun))
                 logger.debug('...   {}'.format(inst))
 
-            raise ESLRuntimeError(msg)
+            raise ESLRuntimeError(msg) from None
 
         return result
