@@ -438,8 +438,10 @@ class Parser(object):
         lexer = p.lexer
         startpos = getattr(lexer, 'startpos', 1)
         column = lexer.lexpos - startpos + 1
-        raise ParseError('can\'t parse `{}\' '
-                          'at line {} col {}'.format(p.value, p.lineno, column))
+        msg = ('can\'t parse `{}\' '
+               'at line {} col {}'.format(p.value, p.lineno, column))
+        logger.error('Error: {}'.format(msg[0].lower() + msg[1:]))
+        raise ParseError(msg)
 
     def parse(self, code):
         return self.yacc.parse(code, lexer=self.lexer.lexer, tracking=True)

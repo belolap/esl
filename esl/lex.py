@@ -4,8 +4,12 @@ __author__ = 'Gennady Kovalev <gik@bigur.ru>'
 __copyright__ = '(c) 2016 Business group for development management'
 __licence__ = 'For license information see LICENSE'
 
+import logging
 import ply.lex
 import collections
+
+
+logger = logging.getLogger('esl')
 
 
 class LexError(Exception):
@@ -172,6 +176,7 @@ class Lexer(object):
     def t_error(self, t):
         msg = ('Illegal character `{}\' '
                'at line {}'.format(t.value[0], t.lexer.lineno))
+        logger.error('Error: {}'.format(msg[0].lower() + msg[1:]))
         raise LexError(msg)
 
     def build(self, **kwargs):
