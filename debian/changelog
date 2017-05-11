@@ -1,4 +1,11 @@
-esl (1.0.0) UNRELEASED; urgency=medium
+esl (1.0.1) unstable; urgency=medium
+
+  * Better error messages output
+  * Fix has_attribute/has_item methods in namespace
+
+ -- Gennady Kovalev <gik@bigur.ru>  Thu, 11 May 2017 17:13:30 +0300
+
+esl (1.0.0) unstable; urgency=medium
 
   * New LUA syntax w/o builtin libraries
 
