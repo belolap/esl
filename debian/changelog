@@ -1,3 +1,9 @@
+esl (1.0.2) unstable; urgency=medium
+
+  * Added stub for python_timedelta module
+
+ -- Gennady Kovalev <gik@bigur.ru>  Sun, 04 Jun 2017 11:40:14 +0300
+
 esl (1.0.1) unstable; urgency=medium
 
   * Better error messages output

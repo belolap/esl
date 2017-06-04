@@ -8,6 +8,7 @@ from . import basic
 from . import math
 from . import table
 from . import python_datetime
+from . import python_timedelta
 from . import python_decimal
 from . import python_list
 
@@ -16,5 +17,6 @@ __extension__.update(basic.__extension__)
 __extension__.update(math.__extension__)
 __extension__.update(table.__extension__)
 __extension__.update(python_datetime.__extension__)
+__extension__.update(python_timedelta.__extension__)
 __extension__.update(python_decimal.__extension__)
 __extension__.update(python_list.__extension__)
