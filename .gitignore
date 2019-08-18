@@ -97,3 +97,6 @@ ENV/
 
 # Parser's temp files
 parser.out
+
+# Mypy cache
+.mypy_cache
