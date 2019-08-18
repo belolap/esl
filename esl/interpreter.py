@@ -13,7 +13,7 @@ import esl.table
 import esl.function
 import esl.extensions
 
-logger = logging.getLogger('esl')
+logger = logging.getLogger(__name__)
 
 
 class ESLSyntaxError(Exception):
@@ -101,13 +101,13 @@ class Assignment(Statement):
             if self.value is None:
                 values.append(None)
             else:
-                values.append(await
-                              self.value.children[i].touch(interpreter, ns))
+                values.append(
+                    (await self.value.children[i].touch(interpreter,
+                                                        ns)))  # yapf: ignore
 
         for i in range(0, count):
             item = self.left.children[i]
             value = values[i]
-
             if isinstance(item, Variable):
                 name = await item.name.touch(interpreter, ns)
             else:
@@ -115,7 +115,6 @@ class Assignment(Statement):
 
             if isinstance(item, Variable) and item.left is not None:
                 obj = await item.left.touch(interpreter, ns)
-
                 try:
                     if value is None:
                         if name in obj:
@@ -129,13 +128,7 @@ class Assignment(Statement):
                     else:
                         ns.set_attribute(obj, name, value)
             else:
-                if self.local:
-                    ns.set_local(name, value)
-                else:
-                    if ns.has_local(name):
-                        ns.set_local(name, value)
-                    else:
-                        ns.set_global(name, value)
+                ns.set_var(name, value, self.local)
 
         interpreter.line_stack.pop()
 
@@ -252,7 +245,7 @@ class NumericFor(Statement):
         while (step > 0 and i <= limit) or (step <= 0 and i >= limit):
             if interpreter.breaking:
                 break
-            ns.set_local(name, i)
+            ns.set_var(name, i, True)
             result = await self.block.touch(interpreter, ns)
             i += step
 
@@ -316,7 +309,7 @@ class GenericFor(Statement):
                 values = [values]
 
             for k, v in zip(names, values):
-                ns.set_local(k, v)
+                ns.set_var(k, v, True)
 
             result = await self.block.touch(interpreter, ns)
 
@@ -348,19 +341,14 @@ class Function(Statement):
         for item in self.name.children:
             if parent is None:
                 n = await item.touch(interpreter, ns)
-                parent = ns.get_local(n, None)
-                if parent is None:
-                    parent = ns.get_global(n, None)
+                parent = ns.get_var(n)
             else:
                 parent = parent[n]
             if parent is None:
                 raise NameError('function not found')
 
         if parent is None:
-            if ns.has_local(name):
-                ns.set_local(name, func)
-            else:
-                ns.set_global(name, func)
+            ns.set_var(name, func)
         else:
             if self.name.colon:
                 func.self = parent
@@ -457,15 +445,13 @@ class Variable(Node):
             name = await self.name.touch(interpreter, ns)
 
         if self.left is None:
-            result = ns.get_local(name, None)
-            if result is None:
-                result = ns.get_global(name, None)
+            result = ns.get_var(name)
         else:
             left = await self.left.touch(interpreter, ns)
             try:
-                result = ns.get_item(left, name, None)
+                result = ns.get_item(left, name)
             except TypeError:
-                result = ns.get_attribute(left, name, None)
+                result = ns.get_attribute(left, name)
         return result
 
 
@@ -511,7 +497,7 @@ class FunctionCall(Node):
 
         if isinstance(func, esl.function.Function):
             if self.colon:
-                ns.set_local('self', func.self)
+                ns.set_var('self', func.self, True)
 
             if func.parlist is not None:
                 count = len(func.parlist.namelist.children)
@@ -519,7 +505,7 @@ class FunctionCall(Node):
                     parameter = await func.parlist.namelist.children[i].touch(
                         interpreter, ns)
                     arg = await self.args.children[i].touch(interpreter, ns)
-                    ns.set_local(parameter, arg)
+                    ns.set_var(parameter, arg, True)
             result = await func.body.touch(interpreter, ns)
 
         else:
@@ -751,11 +737,11 @@ class Interpreter(object):
                  bytecode=None,
                  namespace=None,
                  extensions=None,
-                 debug=True):
+                 debug=False):
         self.__code = code
 
         if bytecode is None:
-            parser = esl.parse.Parser()
+            parser = esl.parse.Parser(debug=debug)
             try:
                 bytecode = parser.parse(code)
             except (esl.lex.LexError, esl.parse.ParseError) as e:
@@ -784,9 +770,10 @@ class Interpreter(object):
         ns = self.__namespace
 
         for k, v in extensions.items():
-            ns.set_global(k, v)
+            ns.set_var(k, v)
 
-        ns.globals.update(kwargs)
+        for k, v in kwargs.items():
+            ns.set_var(k, v)
 
     async def run(self):
         if self.__bytecode is None:

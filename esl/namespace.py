@@ -2,71 +2,43 @@ __author__ = 'Gennady Kovalev <gik@bigur.ru>'
 __copyright__ = '(c) 2016-2019 Development management business group'
 __licence__ = 'For license information see LICENSE'
 
+from logging import getLogger
+
+from esl.table import Table
+
+logger = getLogger(__name__)
+
 _DEFAULT = object()
 
 
 class Namespace(object):
-    def __init__(self,
-                 globals_dict=None,
-                 locals_dict=None,
-                 import_handler=None):
-        if globals_dict is None:
-            globals_dict = {'__builtins__': {}}
-        assert isinstance(globals_dict, dict)
-        self.__globals = globals_dict
+    def __init__(self, local_vars=None, parent=None, import_handler=None):
+        if local_vars is None:
+            local_vars = {}
+        self.__vars = local_vars
+        self.__parent = parent
 
-        if locals_dict is None:
-            locals_dict = {}
-        assert isinstance(locals_dict, dict)
-        self.__locals = locals_dict
-
-    # Get dicts for function call
-    @property
-    def globals(self):
-        return self.__globals
-
-    @property
-    def locals(self):
-        return self.__locals
-
-    # Globals and locals manipulation
-    def set_global(self, key, value):
+    # Variables manipulation
+    def set_var(self, key, value, local=False):
         assert isinstance(key, str)
-        self.__globals[key] = value
+        if key in self.__vars or local or not self.__parent:
+            self.__vars[key] = value
+        else:
+            self.__parent.set_var(key, value)
 
-    def set_local(self, key, value):
+    def get_var(self, key):
         assert isinstance(key, str)
-        self.__locals[key] = value
+        if key in self.__vars:
+            return self.__vars[key]
+        if self.__parent is not None:
+            return self.__parent.get_var(key)
 
-    def del_global(self, key):
+    def del_var(self, key):
         assert isinstance(key, str)
-        del self.__globals[key]
-
-    def del_local(self, key):
-        assert isinstance(key, str)
-        del self.__locals[key]
-
-    def get_global(self, key, default=_DEFAULT):
-        try:
-            return self.__globals[key]
-        except KeyError:
-            if default == _DEFAULT:
-                raise
-            return default
-
-    def get_local(self, key, default=_DEFAULT):
-        try:
-            return self.__locals[key]
-        except KeyError:
-            if default == _DEFAULT:
-                raise
-            return default
-
-    def has_global(self, key):
-        return key in self.__globals
-
-    def has_local(self, key):
-        return key in self.__locals
+        if key in self.__vars:
+            del self.__vars[key]
+        elif self.__parent:
+            self.__parent.del_var(key)
 
     # Object's attributes manipulation
     def check_key(self, obj, key):
@@ -85,16 +57,9 @@ class Namespace(object):
     def has_attribute(self, obj, key):
         return hasattr(obj, key)
 
-    def get_attribute(self, obj, key, default=_DEFAULT):
+    def get_attribute(self, obj, key):
         self.check_key(obj, key)
-        try:
-            value = getattr(obj, key)
-        except AttributeError:
-            if default == _DEFAULT:
-                raise
-            else:
-                value = default
-        return value
+        return getattr(obj, key, None)
 
     def set_item(self, obj, key, value):
         self.check_key(obj, key)
@@ -104,23 +69,17 @@ class Namespace(object):
         self.check_key(obj, key)
         del obj[key]
 
-    def get_item(self, obj, key, default=_DEFAULT):
+    def get_item(self, obj, key):
         self.check_key(obj, key)
-        try:
-            value = obj[key]
-        except KeyError:
-            if default == _DEFAULT:
-                raise
-            else:
-                value = default
-        return value
+        if isinstance(obj, dict):
+            return obj.get(key)
+        elif isinstance(obj, Table):
+            return obj[key]
+        raise TypeError('unsupported type.')
 
     def has_item(self, obj, key):
         return key in obj
 
     # New namespace
     def clone(self):
-        ns = Namespace(globals_dict=self.__globals)
-        for k, v in self.__locals.items():
-            ns.set_local(k, v)
-        return ns
+        return Namespace(parent=self)

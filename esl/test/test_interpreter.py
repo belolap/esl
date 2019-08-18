@@ -2,14 +2,21 @@ __author__ = 'Gennady Kovalev <gik@bigur.ru>'
 __copyright__ = '(c) 2016-2019 Development management business group'
 __licence__ = 'For license information see LICENSE'
 
-from logging import getLogger
+from logging import getLogger, DEBUG
 
-from pytest import mark
+from pytest import fixture, mark
 
 from esl import Interpreter, Namespace, Table, ESLSyntaxError
 from esl.lex import Lexer
 
 logger = getLogger(__name__)
+
+
+@fixture
+def debug(caplog):
+    caplog.set_level(DEBUG, logger='esl')
+    caplog.set_level(DEBUG, logger='yacc')
+    return logger.debug
 
 
 def dump_lex(code, debug=False):
@@ -87,9 +94,9 @@ class TestInterpreter:
                 self.s = child
 
         ns = Namespace()
-        ns.set_global('a', A('c', A('7')))
+        ns.set_var('a', A('c', A('7')))
 
-        a = ns.get_global('a')
+        a = ns.get_var('a')
         assert isinstance(a, A)
 
         await assert_code('c', 'return a.x;', ns)
@@ -112,7 +119,7 @@ class TestInterpreter:
                 self.b = x
 
         ns = Namespace()
-        ns.set_global('a', A('zzz'))
+        ns.set_var('a', A('zzz'))
         await assert_code('d', 'a.b = "d"; return a.b', ns)
         await assert_code(['z', 'b'], 'z, a.b = "z", "b"; return z, a.b', ns)
 
@@ -441,7 +448,7 @@ class TestInterpreter:
         await assert_code(tmpl, code)
 
     @mark.asyncio
-    async def test_namespace(self):
+    async def test_scope(self):
         '''Namespace and scope'''
         code = '''\
         a = 1
@@ -478,6 +485,15 @@ class TestInterpreter:
         return a
         '''
         await assert_code(None, code)
+
+        code = '''\
+            local a = 1
+            if true then
+                a = 2
+            end
+            return a
+        '''
+        await assert_code(2, code)
 
     @mark.asyncio
     async def test_objects_functions(self):
