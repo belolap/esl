@@ -1,149 +1,149 @@
-#!/usr/bin/env python3
-
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(c) 2016 Business group for development management'
+__copyright__ = '(c) 2016-2019 Development management business group'
 __licence__ = 'For license information see LICENSE'
 
-import decimal
-import logging
-import tornado.testing
+from logging import getLogger
 
-import esl
+from pytest import mark
+
+from esl import Interpreter, Namespace, Table, ESLSyntaxError
+from esl.lex import Lexer
+
+logger = getLogger(__name__)
 
 
-logger = logging.getLogger('esl.test')
+def dump_lex(code, debug=False):
+    lexer = Lexer()
+    lexer.build(debug=debug)
+    lexer.lexer.input(code)
+    for tok in lexer.lexer:
+        logger.debug(tok)
 
 
-class TestInterpreter(tornado.testing.AsyncTestCase):
+async def run_code(code, ns=None):
+    interpreter = Interpreter(code, namespace=ns)
+    return await interpreter.run()
 
-    def setUp(self):
-        super().setUp()
 
-    def dump_lex(self, code, debug=False):
-        lexer = esl.lex.Lexer()
-        lexer.build(debug=debug)
-        lexer.lexer.input(code)
-        for tok in lexer.lexer:
-            logger.debug(tok)
+async def assert_code(template, code, ns=None):
+    result = await run_code(code, ns=ns)
+    assert template == result
 
-    async def run_code(self, code, ns=None):
-        interpreter = esl.Interpreter(code, namespace=ns)
-        return await interpreter.run()
 
-    async def assert_code(self, template, code, ns=None):
-        result = await self.run_code(code, ns=ns)
-        self.assertEqual(template, result)
+async def assert_raises(exc, code, ns=None):
+    try:
+        await run_code(code, ns=ns)
+    except Exception:
+        pass
+    else:
+        assert False, 'Exception {} does not raised'.format(exc.__name__)
 
-    async def assert_raises(self, exc, code, ns=None):
-        try:
-            result = await self.run_code(code, ns=ns)
-        except exc as e:
-            pass
-        else:
-            self.fail('Exception {} does not raised'.format(exc.__name__))
 
-    @tornado.testing.gen_test
-    def test_constants(self):
+class TestInterpreter:
+    @mark.asyncio
+    async def test_constants(self):
         '''Return constants'''
-        yield self.assert_code(1, 'return 1')
-        yield self.assert_code(100, 'return 100')
-        yield self.assert_code('abc', 'return "abc"')
-        yield self.assert_code(True,  'return true;')
-        yield self.assert_code(False, 'return false;')
-        yield self.assert_code(None,  'return nil;')
+        await assert_code(1, 'return 1')
+        await assert_code(100, 'return 100')
+        await assert_code('abc', 'return "abc"')
+        await assert_code(True, 'return true;')
+        await assert_code(False, 'return false;')
+        await assert_code(None, 'return nil;')
 
-    @tornado.testing.gen_test
-    def test_binary_expressions(self):
+    @mark.asyncio
+    async def test_binary_expressions(self):
         '''Binary expressions'''
-        yield self.assert_code(9,  'return 5 + 4;')
-        yield self.assert_code(17, 'return 5 + 4 * 3;')
-        yield self.assert_code(27, 'return (5 + 4) * 3;')
-        yield self.assert_code(7,  'return 4 / 2 + 5;')
-        yield self.assert_code(12, 'return 5 + 4 / 2 + 5;')
+        await assert_code(9, 'return 5 + 4;')
+        await assert_code(17, 'return 5 + 4 * 3;')
+        await assert_code(27, 'return (5 + 4) * 3;')
+        await assert_code(7, 'return 4 / 2 + 5;')
+        await assert_code(12, 'return 5 + 4 / 2 + 5;')
 
-    @tornado.testing.gen_test
-    def test_tables(self):
+    @mark.asyncio
+    async def test_tables(self):
         '''Tables'''
-        t = esl.Table()
+        t = Table()
         t[1] = 1
         t[2] = 2
         t["zed"] = "alive"
-        self.assertEqual([(1, 1), (2, 2), ('zed', 'alive')],
-                         [(k, t[k]) for k in t])
+        assert ([(1, 1), (2, 2), ('zed', 'alive')] == [(k, t[k]) for k in t])
+
         t[4] = 4
-        self.assertEqual(2, len(t))
+        assert 2 == len(t)
 
         t[3] = 3
-        self.assertEqual(4, len(t))
+        assert 4, len(t)
 
-        t = yield self.run_code('return {1, 2, 3}')
-        self.assertEqual([(1, 1), (2, 2), (3, 3)],
-                         [(k, t[k]) for k in t])
+        t = await run_code('return {1, 2, 3}')
+        assert ([(1, 1), (2, 2), (3, 3)] == [(k, t[k]) for k in t])
 
-    @tornado.testing.gen_test
-    def test_dot(self):
+    @mark.asyncio
+    async def test_dot(self):
         '''Access to object attributes via dot'''
         class A(object):
             def __init__(self, value, child=None):
                 self._x = 'denied'
                 self.x = value
                 self.s = child
-        ns = esl.Namespace()
+
+        ns = Namespace()
         ns.set_global('a', A('c', A('7')))
 
         a = ns.get_global('a')
-        yield self.assert_code('c', 'return a.x;', ns)
-        yield self.assert_code('7', 'return a.s.x;', ns)
-        yield self.assert_raises(esl.ESLSyntaxError, 'return a._x;', ns)
+        assert isinstance(a, A)
 
-    @tornado.testing.gen_test
-    def test_variables(self):
+        await assert_code('c', 'return a.x;', ns)
+        await assert_code('7', 'return a.s.x;', ns)
+        await assert_raises(ESLSyntaxError, 'return a._x;', ns)
+
+    @mark.asyncio
+    async def test_variables(self):
         '''Variables assignment'''
-        yield self.assert_code(5,  'a = 5; return a;')
-        yield self.assert_code(5,  'a = 5; b = a; return b;')
-        yield self.assert_code([6, 5],  'a, b = 5, 6; a, b = b, a; return a, b')
-        yield self.assert_code(None, 'return a;')
+        await assert_code(5, 'a = 5; return a;')
+        await assert_code(5, 'a = 5; b = a; return b;')
+        await assert_code([6, 5], 'a, b = 5, 6; a, b = b, a; return a, b')
+        await assert_code(None, 'return a;')
 
-    @tornado.testing.gen_test
-    def test_attributes_assignment(self):
+    @mark.asyncio
+    async def test_attributes_assignment(self):
         '''Object's attributes assignment'''
         class A(object):
             def __init__(self, x):
                 self.b = x
-        ns = esl.Namespace()
+
+        ns = Namespace()
         ns.set_global('a', A('zzz'))
-        yield self.assert_code('d', 'a.b = "d"; return a.b', ns)
-        yield self.assert_code(['z', 'b'], 'z, a.b = "z", "b"; return z, a.b', ns)
+        await assert_code('d', 'a.b = "d"; return a.b', ns)
+        await assert_code(['z', 'b'], 'z, a.b = "z", "b"; return z, a.b', ns)
 
-
-    @tornado.testing.gen_test
-    def test_relational_expressions(self):
+    @mark.asyncio
+    async def test_relational_expressions(self):
         '''Relational expressions'''
-        yield self.assert_code(True,  'return 5 == 5;')
-        yield self.assert_code(False, 'return 5 ~= 5;')
-        yield self.assert_code(True,  'return 5 >= 5;')
-        yield self.assert_code(False, 'return 5 >= 6;')
-        yield self.assert_code(True,  'return 6 >= 5;')
-        yield self.assert_code(False, 'return 6 <= 5;')
-        yield self.assert_code(False, 'return 5  < 5;')
+        await assert_code(True, 'return 5 == 5;')
+        await assert_code(False, 'return 5 ~= 5;')
+        await assert_code(True, 'return 5 >= 5;')
+        await assert_code(False, 'return 5 >= 6;')
+        await assert_code(True, 'return 6 >= 5;')
+        await assert_code(False, 'return 6 <= 5;')
+        await assert_code(False, 'return 5  < 5;')
 
-    @tornado.testing.gen_test
-    def test_unary_expressions(self):
+    @mark.asyncio
+    async def test_unary_expressions(self):
         '''Unary expressions'''
-        yield self.assert_code(3, 'return #{1, 2, [3]=3, ["a"]=4, b=5}')
-        yield self.assert_code(5,  'a = -5; return -a')
-        yield self.assert_code(6,  'a = -(5 + 1); return -a')
+        await assert_code(3, 'return #{1, 2, [3]=3, ["a"]=4, b=5}')
+        await assert_code(5, 'a = -5; return -a')
+        await assert_code(6, 'a = -(5 + 1); return -a')
 
-    @tornado.testing.gen_test
-    def test_logical_expressions(self):
+    @mark.asyncio
+    async def test_logical_expressions(self):
         '''Logical expressions'''
-        self.dump_lex('return 1 and 4')
-        yield self.assert_code(4, 'return 1 and 4')
-        yield self.assert_code(5, 'return 1 - 1 == 1 and 4 or 5')
-        yield self.assert_code(False, 'return not 5')
+        dump_lex('return 1 and 4')
+        await assert_code(4, 'return 1 and 4')
+        await assert_code(5, 'return 1 - 1 == 1 and 4 or 5')
+        await assert_code(False, 'return not 5')
 
-    @tornado.testing.gen_test
-    def test_if_statement(self):
+    @mark.asyncio
+    async def test_if_statement(self):
         '''If-elseif-else statement'''
         code = '''\
             a = 1
@@ -153,7 +153,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return b
         '''
-        yield self.assert_code(1, code)
+        await assert_code(1, code)
 
         code = '''\
             a = 3
@@ -167,7 +167,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return b
         '''
-        yield self.assert_code(3, code)
+        await assert_code(3, code)
 
         code = '''\
             a = 4
@@ -183,10 +183,10 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return b
         '''
-        yield self.assert_code(4, code)
+        await assert_code(4, code)
 
-    @tornado.testing.gen_test
-    def test_while_loop(self):
+    @mark.asyncio
+    async def test_while_loop(self):
         '''While loop'''
         code = '''
             result = 0
@@ -197,7 +197,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return result;
         '''
-        yield self.assert_code(5, code)
+        await assert_code(5, code)
 
         code = '''
             result = 0
@@ -208,7 +208,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return result;
         '''
-        yield self.assert_code(0, code)
+        await assert_code(0, code)
 
         code = '''
             result = 0
@@ -219,7 +219,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             until count < 5
             return result
         '''
-        yield self.assert_code(5, code)
+        await assert_code(5, code)
 
         code = '''
             result = 0
@@ -230,10 +230,10 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             until count < 1
             return result
         '''
-        yield self.assert_code(1, code)
+        await assert_code(1, code)
 
-    @tornado.testing.gen_test
-    def test_for_statement(self):
+    @mark.asyncio
+    async def test_for_statement(self):
         '''Numeric for statement'''
         code = '''\
             a = 0
@@ -242,7 +242,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return a
         '''
-        yield self.assert_code(5, code)
+        await assert_code(5, code)
 
         code = '''\
             a = 0
@@ -251,7 +251,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return a
         '''
-        yield self.assert_code(6, code)
+        await assert_code(6, code)
 
         code = '''\
             a = 0
@@ -262,10 +262,10 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return a
         '''
-        yield self.assert_code(30, code)
+        await assert_code(30, code)
 
-    @tornado.testing.gen_test
-    def test_for_in(self):
+    @mark.asyncio
+    async def test_for_in(self):
         '''Generic for statement'''
         code = '''\
             a = {1, 2, 3, ["b"]=7, c=8, 4, 5}
@@ -275,10 +275,10 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return b
         '''
-        yield self.assert_code(30, code)
+        await assert_code(30, code)
 
-    @tornado.testing.gen_test
-    def test_break_statement(self):
+    @mark.asyncio
+    async def test_break_statement(self):
         '''Break statement'''
         code = '''
             a = 0
@@ -288,7 +288,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return a
         '''
-        yield self.assert_code(1, code)
+        await assert_code(1, code)
 
         code = '''
             a = 0
@@ -300,7 +300,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return a
         '''
-        yield self.assert_code(6, code)
+        await assert_code(6, code)
 
         code = '''\
             a = 0
@@ -315,33 +315,33 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return a
         '''
-        yield self.assert_code(33, code)
+        await assert_code(33, code)
 
-    @tornado.testing.gen_test
-    def test_function(self):
+    @mark.asyncio
+    async def test_function(self):
         '''Function'''
         funcode = '''\
             function huge_sum(a, b, c, d)
                 return a + b + c + d
             end
         '''
-        yield self.assert_code(10, funcode + 'return huge_sum(1, 5, 3, 1)')
+        await assert_code(10, funcode + 'return huge_sum(1, 5, 3, 1)')
 
         def func(a, b, c=1, *p, **n):
             return a + b
 
-        ns = esl.Namespace({'func': func})
-        yield self.assert_code(4, 'return func(1, 3);', ns)
+        ns = Namespace({'func': func})
+        await assert_code(4, 'return func(1, 3);', ns)
 
         funcode = '''\
             function dummy()
                 return 1
             end
         '''
-        yield self.assert_code(1, funcode + 'return dummy()')
+        await assert_code(1, funcode + 'return dummy()')
 
-    @tornado.testing.gen_test
-    def test_function_namespace(self):
+    @mark.asyncio
+    async def test_function_namespace(self):
         '''Function namespaces'''
         code = '''\
             a = 2
@@ -351,10 +351,10 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             sum(4, 6)
             return a
         '''
-        yield self.assert_code(2, code)
+        await assert_code(2, code)
 
-    @tornado.testing.gen_test
-    def test_return_statement(self):
+    @mark.asyncio
+    async def test_return_statement(self):
         '''Return statement'''
         code = '''\
             function sumstr(b, c, d)
@@ -363,7 +363,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             result = sumstr("a1", "b5", "d6")
             return result
         '''
-        yield self.assert_code('a1b5d6', code)
+        await assert_code('a1b5d6', code)
 
         code = '''\
             a = 1
@@ -373,13 +373,13 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             a = a + 1
             return 3
         '''
-        yield self.assert_code(2, code)
+        await assert_code(2, code)
 
         code = '''return 1'''
-        yield self.assert_code(1, code)
+        await assert_code(1, code)
 
-    @tornado.testing.gen_test
-    def test_block_parsing(self):
+    @mark.asyncio
+    async def test_block_parsing(self):
         '''Block parsing'''
         code = '''
             function a(x)
@@ -395,7 +395,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             z = 1 + c(a or b)(5)
             return z
         '''
-        yield self.assert_code(7, code)
+        await assert_code(7, code)
 
         code = '''
             function a(x)
@@ -410,17 +410,17 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             z = 1 + c; (a or b)(5)
             return z
         '''
-        yield self.assert_code(6, code)
+        await assert_code(6, code)
 
-    @tornado.testing.gen_test
-    def test_comments(self):
+    @mark.asyncio
+    async def test_comments(self):
         '''Test comments'''
         code = '''\
         -- simple comment
         local a = 1
         return a
         '''
-        yield self.assert_code(1, code)
+        await assert_code(1, code)
 
         code = '''\
         -- single line
@@ -438,10 +438,10 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         tmpl = '''This is
                     multiline
                     string'''
-        yield self.assert_code(tmpl, code)
+        await assert_code(tmpl, code)
 
-    @tornado.testing.gen_test
-    def test_namespace(self):
+    @mark.asyncio
+    async def test_namespace(self):
         '''Namespace and scope'''
         code = '''\
         a = 1
@@ -450,7 +450,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         end
         return a
         '''
-        yield self.assert_code(2, code)
+        await assert_code(2, code)
 
         code = '''\
         a = 1
@@ -459,7 +459,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         end
         return a
         '''
-        yield self.assert_code(1, code)
+        await assert_code(1, code)
 
         code = '''\
         a = 1
@@ -468,7 +468,7 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         end
         return a
         '''
-        yield self.assert_code(1, code)
+        await assert_code(1, code)
 
         code = '''\
         do
@@ -477,10 +477,10 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
         end
         return a
         '''
-        yield self.assert_code(None, code)
+        await assert_code(None, code)
 
-    @tornado.testing.gen_test
-    def test_objects_functions(self):
+    @mark.asyncio
+    async def test_objects_functions(self):
         '''Objects's functions'''
         code = '''\
             a = {b=1}
@@ -489,28 +489,30 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return a:test()
         '''
-        yield self.assert_code(1, code)
+        await assert_code(1, code)
 
         class A(object):
             def __init__(self):
                 self.value = 1
+
             def test(self, increment):
-                if isinstance(self, esl.Table):
+                if isinstance(self, Table):
                     return self['value'] + increment
                 return self.value + increment
-        ns = esl.Namespace({'a': A()})
+
+        ns = Namespace({'a': A()})
 
         code = '''return a:test(10)'''
-        yield self.assert_code(11, code, ns)
+        await assert_code(11, code, ns)
 
         code = '''
             b = {value=2}
             return a.test(b, 20)
         '''
-        yield self.assert_code(22, code, ns)
+        await assert_code(22, code, ns)
 
-    @tornado.testing.gen_test
-    def test_iterators(self):
+    @mark.asyncio
+    async def test_iterators(self):
         '''Iterators'''
         code = '''
             result = 0
@@ -520,20 +522,22 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             return result
         '''
 
-        yield self.assert_code(6, 'a = {1, 2, 3}' + code)
+        await assert_code(6, 'a = {1, 2, 3}' + code)
 
-        ns = esl.Namespace({'a': {'a': 1, 'b': 2, 'c': 3, 'd': 4}})
-        yield self.assert_code(10, code, ns)
+        ns = Namespace({'a': {'a': 1, 'b': 2, 'c': 3, 'd': 4}})
+        await assert_code(10, code, ns)
 
-        ns = esl.Namespace({'a': [1, 2, 3, 4, 5]})
-        yield self.assert_code(15, code, ns)
+        ns = Namespace({'a': [1, 2, 3, 4, 5]})
+        await assert_code(15, code, ns)
 
         # Generators
         class A(object):
             def __init__(self):
                 self.number = 0
+
             async def __aiter__(self):
                 return self
+
             async def __anext__(self):
                 self.number += 1
                 if self.number > 10:
@@ -547,17 +551,17 @@ class TestInterpreter(tornado.testing.AsyncTestCase):
             end
             return result
         '''
-        ns = esl.Namespace({'a': A()})
-        yield self.assert_code(55, code, ns)
+        ns = Namespace({'a': A()})
+        await assert_code(55, code, ns)
 
-    @tornado.testing.gen_test
-    def test_concat(self):
+    @mark.asyncio
+    async def test_concat(self):
         '''Concat'''
         code = '''return "a" .. "b"'''
-        yield self.assert_code('ab', code)
+        await assert_code('ab', code)
 
         code = '''return 1 .. "b"'''
-        yield self.assert_code('1b', code)
+        await assert_code('1b', code)
 
         code = '''return "a" .. 1'''
-        yield self.assert_code('a1', code)
+        await assert_code('a1', code)
