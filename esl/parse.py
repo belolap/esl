@@ -8,7 +8,7 @@ import ply.yacc
 import esl.lex
 import esl.interpreter
 
-logger = logging.getLogger('esl')
+logger = logging.getLogger(__name__)
 
 
 class ParseError(Exception):

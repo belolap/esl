@@ -6,7 +6,7 @@ import logging
 import ply.lex
 import collections
 
-logger = logging.getLogger('esl')
+logger = logging.getLogger(__name__)
 
 
 class LexError(Exception):
