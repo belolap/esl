@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
-
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(c) 2016 Business group for development management'
+__copyright__ = '(c) 2016-2019 Development management business group'
 __licence__ = 'For license information see LICENSE'
 
 import logging
 import ply.lex
 import collections
-
 
 logger = logging.getLogger('esl')
 
@@ -18,9 +15,7 @@ class LexError(Exception):
 
 class Lexer(object):
 
-    states = (
-        ('ccode', 'exclusive'),
-    )
+    states = (('ccode', 'exclusive'), )
 
     keywords = collections.OrderedDict([
         ('do', 'DO'),
@@ -30,22 +25,17 @@ class Lexer(object):
         ('repeat', 'REPEAT'),
         ('end', 'END'),
         ('in', 'IN'),
-
         ('if', 'IF'),
         ('then', 'THEN'),
         ('elseif', 'ELSEIF'),
         ('else', 'ELSE'),
-
         ('local', 'LOCAL'),
-
         ('function', 'FUNCTION'),
         ('return', 'RETURN'),
         ('break', 'BREAK'),
-
         ('nil', 'NIL'),
         ('false', 'FALSE'),
         ('true', 'TRUE'),
-
         ('and', 'AND'),
         ('or', 'OR'),
         ('not', 'NOT'),
@@ -56,44 +46,36 @@ class Lexer(object):
         'STRING',
         'TDOT',
         'NAME',
-
         'PLUS',
         'MINUS',
         'TIMES',
         'DIVIDE',
         'POWER',
         'MODULO',
-
         'EQUALS',
         'LESS_THEN',
         'MORE_THEN',
         'LESS_EQUAL_THEN',
         'MORE_EQUAL_THEN',
         'TILDE_EQUAL',
-
         'SQUARE',
-
         'APPEND',
-
         'ASSIGN',
         'DOT',
         'COLON',
         'COMMA',
         'SEMICOLON',
-
         'BRACES_L',
         'BRACES_R',
-
         'BRACKET_L',
         'BRACKET_R',
-
         'PARANTHESES_L',
         'PARANTHESES_R',
     )
 
-    t_NUMBER          = r'\d+'
-    t_STRING          = r'"[^\\"]*"' # r'".*?"|\'.*?\''
-    t_TDOT            = r'\.\.\.'
+    t_NUMBER = r'\d+'
+    t_STRING = r'"[^\\"]*"'  # r'".*?"|\'.*?\''
+    t_TDOT = r'\.\.\.'
 
     def t_NAME(self, t):
         r'[A-Za-z][A-Za-z0-9_]*'
@@ -101,38 +83,38 @@ class Lexer(object):
             t.type = self.keywords[t.value]
         return t
 
-    t_PLUS            = r'\+'
-    t_MINUS           = r'-'
-    t_TIMES           = r'\*'
-    t_DIVIDE          = r'/'
-    t_POWER           = r'\^'
-    t_MODULO          = r'%'
+    t_PLUS = r'\+'
+    t_MINUS = r'-'
+    t_TIMES = r'\*'
+    t_DIVIDE = r'/'
+    t_POWER = r'\^'
+    t_MODULO = r'%'
 
-    t_EQUALS          = r'=='
-    t_LESS_THEN       = r'<'
-    t_MORE_THEN       = r'>'
+    t_EQUALS = r'=='
+    t_LESS_THEN = r'<'
+    t_MORE_THEN = r'>'
     t_LESS_EQUAL_THEN = r'<='
     t_MORE_EQUAL_THEN = r'>='
-    t_TILDE_EQUAL     = r'~='
+    t_TILDE_EQUAL = r'~='
 
-    t_SQUARE          = r'\#'
+    t_SQUARE = r'\#'
 
-    t_APPEND          = r'\.\.'
+    t_APPEND = r'\.\.'
 
-    t_ASSIGN          = r'='
-    t_DOT             = r'\.'
-    t_COLON           = r':'
-    t_COMMA           = r','
-    t_SEMICOLON       = r';'
+    t_ASSIGN = r'='
+    t_DOT = r'\.'
+    t_COLON = r':'
+    t_COMMA = r','
+    t_SEMICOLON = r';'
 
-    t_BRACES_L        = r'\{'
-    t_BRACES_R        = r'\}'
+    t_BRACES_L = r'\{'
+    t_BRACES_R = r'\}'
 
-    t_BRACKET_L       = r'\['
-    t_BRACKET_R       = r'\]'
+    t_BRACKET_L = r'\['
+    t_BRACKET_R = r'\]'
 
-    t_PARANTHESES_L   = r'\('
-    t_PARANTHESES_R   = r'\)'
+    t_PARANTHESES_L = r'\('
+    t_PARANTHESES_R = r'\)'
 
     def t_NEWLINE(self, t):
         r'\n+'
@@ -164,7 +146,8 @@ class Lexer(object):
             t.lexer.begin('INITIAL')
             t.lexer.lineno += t.value.count('\n')
             if not t.lexer.is_comment:
-                t.value = t.lexer.lexdata[t.lexer.start_pos-1:t.lexer.lexpos-1]
+                t.value = t.lexer.lexdata[t.lexer.start_pos -
+                                          1:t.lexer.lexpos - 1]
                 t.type = 'STRING'
                 return t
 

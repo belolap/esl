@@ -1,21 +1,17 @@
-#!/usr/bin/env python3
-
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(c) 2016-2017 Business group for development management'
+__copyright__ = '(c) 2016-2019 Development management business group'
 __licence__ = 'For license information see LICENSE'
 
 import sys
 import inspect
 import logging
 import traceback
-import collections
 
 import esl.parse
 import esl.namespace
 import esl.table
 import esl.function
 import esl.extensions
-
 
 logger = logging.getLogger('esl')
 
@@ -29,7 +25,6 @@ class ESLRuntimeError(Exception):
 
 
 class Node(object):
-
     def __init__(self, lineno):
         self.lineno = lineno
 
@@ -41,7 +36,6 @@ class Node(object):
 
 
 class ListNode(Node):
-
     def __init__(self, lineno):
         super().__init__(lineno)
         self.children = []
@@ -54,7 +48,6 @@ class ListNode(Node):
 
 
 class Chunk(Node):
-
     def __init__(self, lineno, block):
         super().__init__(lineno)
         self.block = block
@@ -67,7 +60,6 @@ class Chunk(Node):
 
 
 class Block(ListNode):
-
     def __init__(self, lineno):
         super().__init__(lineno)
 
@@ -91,7 +83,6 @@ class Statement(Node):
 
 
 class Assignment(Statement):
-
     def __init__(self, lineno, left, value, local=False):
         super().__init__(lineno)
         self.left = left
@@ -110,8 +101,8 @@ class Assignment(Statement):
             if self.value is None:
                 values.append(None)
             else:
-                values.append(
-                    await self.value.children[i].touch(interpreter, ns))
+                values.append(await
+                              self.value.children[i].touch(interpreter, ns))
 
         for i in range(0, count):
             item = self.left.children[i]
@@ -150,7 +141,6 @@ class Assignment(Statement):
 
 
 class While(Statement):
-
     def __init__(self, lineno, expression, block, check_before=True):
         super().__init__(lineno)
         self.expression = expression
@@ -162,7 +152,6 @@ class While(Statement):
         if result is None or result is False:
             return False
         return True
-
 
     async def touch(self, interpreter, ns):
         interpreter.line_stack.append(self.lineno)
@@ -195,7 +184,6 @@ class While(Statement):
 
 
 class If(Statement):
-
     def __init__(self, lineno, expression, block, elseiflist, else_):
         super().__init__(lineno)
         self.expression = expression
@@ -230,7 +218,6 @@ class If(Statement):
 
 
 class NumericFor(Statement):
-
     def __init__(self, lineno, name, start, limit, step, block):
         super().__init__(lineno)
         self.name = name
@@ -260,7 +247,7 @@ class NumericFor(Statement):
             step = await self.step.touch(interpreter, ns)
         assert isinstance(step, int)
 
-        i =  start
+        i = start
 
         while (step > 0 and i <= limit) or (step <= 0 and i >= limit):
             if interpreter.breaking:
@@ -278,7 +265,6 @@ class NumericFor(Statement):
 
 
 class GenericFor(Statement):
-
     def __init__(self, lineno, namelist, explist, block):
         super().__init__(lineno)
         self.namelist = namelist
@@ -345,7 +331,6 @@ class GenericFor(Statement):
 
 
 class Function(Statement):
-
     def __init__(self, lineno, name, body, local):
         super().__init__(lineno)
         self.name = name
@@ -385,7 +370,6 @@ class Function(Statement):
 
 
 class Break(Statement):
-
     async def touch(self, interpreter, ns):
         interpreter.line_stack.append(self.lineno)
         interpreter.breaking = True
@@ -393,7 +377,6 @@ class Break(Statement):
 
 
 class Return(Statement):
-
     def __init__(self, lineno, explist):
         super().__init__(lineno)
         self.explist = explist
@@ -426,7 +409,6 @@ class ElseIfList(ListNode):
 
 
 class ElseIf(Node):
-
     def __init__(self, lineno, expression, block):
         super().__init__(lineno)
         self.expression = expression
@@ -440,7 +422,6 @@ class ElseIf(Node):
 
 
 class Else(Node):
-
     def __init__(self, lineno, block):
         super().__init__(lineno)
         self.block = block
@@ -453,7 +434,6 @@ class Else(Node):
 
 
 class FunctionName(ListNode):
-
     def __init__(self, lineno, colon=False):
         super().__init__(lineno)
         self.colon = colon
@@ -464,7 +444,6 @@ class VariableList(ListNode):
 
 
 class Variable(Node):
-
     def __init__(self, lineno, left, name, proto='dict'):
         super().__init__(lineno)
         self.left = left
@@ -499,7 +478,6 @@ class ExpressionList(ListNode):
 
 
 class Constant(Node):
-
     def __init__(self, lineno, value):
         super().__init__(lineno)
         self.value = value
@@ -509,7 +487,6 @@ class Constant(Node):
 
 
 class FunctionCall(Node):
-
     def __init__(self, lineno, prefixexp, name, args, colon=False):
         super().__init__(lineno)
         self.prefixexp = prefixexp
@@ -540,7 +517,7 @@ class FunctionCall(Node):
                 count = len(func.parlist.namelist.children)
                 for i in range(0, count):
                     parameter = await func.parlist.namelist.children[i].touch(
-                                        interpreter, ns)
+                        interpreter, ns)
                     arg = await self.args.children[i].touch(interpreter, ns)
                     ns.set_local(parameter, arg)
             result = await func.body.touch(interpreter, ns)
@@ -576,7 +553,6 @@ class Args(ListNode):
 
 
 class FunctionBody(Node):
-
     def __init__(self, lineno, parlist, body):
         super().__init__(lineno)
         self.parlist = parlist
@@ -584,7 +560,6 @@ class FunctionBody(Node):
 
 
 class ParametersList(Node):
-
     def __init__(self, lineno, namelist, dots=False):
         super().__init__(lineno)
         self.namelist = namelist
@@ -592,7 +567,6 @@ class ParametersList(Node):
 
 
 class Table(Node):
-
     def __init__(self, lineno, fieldlist):
         super().__init__(lineno)
 
@@ -612,7 +586,7 @@ class Table(Node):
 
         table = esl.table.Table()
         i = 1
-        for k,v in fieldlist:
+        for k, v in fieldlist:
             if k is None:
                 k = i
                 i += 1
@@ -626,7 +600,6 @@ class FieldList(ListNode):
 
 
 class Field(Node):
-
     def __init__(self, lineno, name, expression):
         super().__init__(lineno)
         self.name = name
@@ -634,7 +607,6 @@ class Field(Node):
 
 
 class Logical(Node):
-
     def __init__(self, lineno, left, operation, right):
         super().__init__(lineno)
         self.left = left
@@ -654,11 +626,9 @@ class Logical(Node):
         else:
             raise NotImplementedError('operator {} is not '
                                       'implemented'.format(self.operator))
-        return result
 
 
 class Relational(Node):
-
     def __init__(self, lineno, left, operation, right):
         super().__init__(lineno)
         self.left = left
@@ -693,7 +663,6 @@ class Relational(Node):
 
 
 class Append(Node):
-
     def __init__(self, lineno, left, right):
         super().__init__(lineno)
         self.left = left
@@ -705,11 +674,12 @@ class Append(Node):
         left = await self.left.touch(interpreter, ns)
         right = await self.right.touch(interpreter, ns)
 
-        if (not isinstance(left, (str, int, float)) or
-            not isinstance(right, (str, int, float))):
+        if (not isinstance(left, (str, int, float))
+                or not isinstance(right, (str, int, float))):
             raise TypeError('can concate only strings or numbers, '
-                            'got `{} .. {}\''.format(type(left).__name__,
-                                                     type(right).__name__))
+                            'got `{} .. {}\''.format(
+                                type(left).__name__,
+                                type(right).__name__))
 
         result = str(left) + str(right)
 
@@ -718,7 +688,6 @@ class Append(Node):
 
 
 class Arithmetic(Node):
-
     def __init__(self, lineno, left, operation, right):
         super().__init__(lineno)
         self.left = left
@@ -749,7 +718,6 @@ class Arithmetic(Node):
 
 
 class Unary(Node):
-
     def __init__(self, lineno, operation, expression):
         super().__init__(lineno)
         self.operation = operation
@@ -769,7 +737,6 @@ class Unary(Node):
 
 
 class Name(Node):
-
     def __init__(self, lineno, name):
         super().__init__(lineno)
         self.name = name
@@ -779,10 +746,12 @@ class Name(Node):
 
 
 class Interpreter(object):
-
-
-    def __init__(self, code, bytecode=None, namespace=None,
-                 extensions=None, debug=True):
+    def __init__(self,
+                 code,
+                 bytecode=None,
+                 namespace=None,
+                 extensions=None,
+                 debug=True):
         self.__code = code
 
         if bytecode is None:
@@ -814,10 +783,6 @@ class Interpreter(object):
 
         ns = self.__namespace
 
-        reserved_map = {
-            'assert_': 'assert',
-        }
-
         for k, v in extensions.items():
             ns.set_global(k, v)
 
@@ -842,16 +807,15 @@ class Interpreter(object):
             # ESL call stack
             parent_fun = '<main>'
             for fun, lineno in self.call_stack:
-                logger.error('... {} line {}: {}()'.format(parent_fun,
-                                                          lineno, fun))
+                logger.error('... {} line {}: {}()'.format(
+                    parent_fun, lineno, fun))
                 parent_fun = fun
 
             lastline = self.line_stack[-1]
             if lastline <= len(lines):
                 line = lines[lastline - 1].strip()[:50]
-                logger.error('... {} line {}: {} ...'.format(parent_fun,
-                                                               lastline,
-                                                               line))
+                logger.error('... {} line {}: {} ...'.format(
+                    parent_fun, lastline, line))
             else:
                 logger.error('... {} line {}: can\' find source '
                              'line '.format(parent_fun, lastline))
@@ -867,8 +831,8 @@ class Interpreter(object):
 
                 logger.debug('Python traceback:')
                 for file, line, fun, inst in traceback.extract_tb(tb):
-                    logger.debug('... {} line {} in {}()'.format(file[-40:],
-                                                                line, fun))
+                    logger.debug('... {} line {} in {}()'.format(
+                        file[-40:], line, fun))
                 logger.debug('...   {}'.format(inst))
 
             raise ESLRuntimeError(msg) from None

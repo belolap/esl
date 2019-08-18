@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
-
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(c) 2016-2017 Business group for development management'
+__copyright__ = '(c) 2016-2019 Development management business group'
 __licence__ = 'For license information see LICENSE'
+
+from typing import Any, Dict
 
 from . import basic
 from . import math
@@ -12,7 +12,7 @@ from . import python_timedelta
 from . import python_decimal
 from . import python_list
 
-__extension__ = {}
+__extension__: Dict[str, Any] = {}
 __extension__.update(basic.__extension__)
 __extension__.update(math.__extension__)
 __extension__.update(table.__extension__)

@@ -1,14 +1,11 @@
-#!/usr/bin/env python3
-
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(c) 2016-2017 Business group for development management'
+__copyright__ = '(c) 2016-2019 Development management business group'
 __licence__ = 'For license information see LICENSE'
 
 import collections
 
 
 class Table(object):
-
     def __init__(self):
         self.__numbered = []
         self.__named = collections.OrderedDict()
@@ -19,7 +16,7 @@ class Table(object):
                 key = int(key)
         if isinstance(key, int):
             if key > 0 and key <= len(self.__numbered):
-                return self.__numbered[key-1]
+                return self.__numbered[key - 1]
         return self.__named.get(key)
 
     def __setitem__(self, key, value):
@@ -29,13 +26,13 @@ class Table(object):
         if isinstance(key, int):
             if key > 0 and key < len(self.__numbered):
                 if value is None:
-                    del self.__numbered[key-1]
+                    del self.__numbered[key - 1]
                 else:
-                    self.__numbered[key-1] = value
+                    self.__numbered[key - 1] = value
                 return
             elif (key - 1) == len(self.__numbered):
                 if value is None:
-                    del self.__numbered[key-1]
+                    del self.__numbered[key - 1]
                 else:
                     self.__numbered.append(value)
                     key += 1
@@ -52,7 +49,7 @@ class Table(object):
             if key.is_integer():
                 key = int(key)
         try:
-            del self.__numbered[key-1]
+            del self.__numbered[key - 1]
         except IndexError:
             pass
 

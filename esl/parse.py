@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-
 __author__ = 'Gennady Kovalev <gik@bigur.ru>'
-__copyright__ = '(c) 2016-2017 Business group for development management'
+__copyright__ = '(c) 2016-2019 Development management business group'
 __licence__ = 'For license information see LICENSE'
 
 import logging
@@ -9,7 +7,6 @@ import ply.yacc
 
 import esl.lex
 import esl.interpreter
-
 
 logger = logging.getLogger('esl')
 
@@ -26,7 +23,8 @@ class Parser(object):
         self.lexer = esl.lex.Lexer()
         self.lexer.build()
 
-        self.yacc = ply.yacc.yacc(module=self, debug=debug,
+        self.yacc = ply.yacc.yacc(module=self,
+                                  debug=debug,
                                   write_tables=write_tables,
                                   errorlog=logger)
 
@@ -89,13 +87,13 @@ class Parser(object):
 
     def p_stat8(self, p):
         '''stat : FOR name ASSIGN exp COMMA exp DO block END'''
-        p[0] = esl.interpreter.NumericFor(
-                p.lineno(0), p[2], p[4], p[6], None, p[8])
+        p[0] = esl.interpreter.NumericFor(p.lineno(0), p[2], p[4], p[6], None,
+                                          p[8])
 
     def p_stat9(self, p):
         '''stat : FOR name ASSIGN exp COMMA exp COMMA exp DO block END'''
-        p[0] = esl.interpreter.NumericFor(
-                p.lineno(0), p[2], p[4], p[6], p[8], p[10])
+        p[0] = esl.interpreter.NumericFor(p.lineno(0), p[2], p[4], p[6], p[8],
+                                          p[10])
 
     def p_stat10(self, p):
         '''stat : FOR namelist IN explist DO block END'''
@@ -132,7 +130,6 @@ class Parser(object):
     def p_empty(self, p):
         '''empty : SEMICOLON
                  |'''
-
     def p_elseiflist(self, p):
         '''elseiflist : elseif
                       | elseiflist elseif
@@ -262,8 +259,8 @@ class Parser(object):
         if len(p) == 3:
             p[0] = esl.interpreter.FunctionCall(p.lineno(0), p[1], None, p[2])
         else:
-            p[0] = esl.interpreter.FunctionCall(
-                p.lineno(0), p[1], p[3], p[4], True)
+            p[0] = esl.interpreter.FunctionCall(p.lineno(0), p[1], p[3], p[4],
+                                                True)
 
     def p_args(self, p):
         '''args : PARANTHESES_L PARANTHESES_R
@@ -340,11 +337,9 @@ class Parser(object):
     def p_fieldsep(self, p):
         '''fieldsep : COMMA
                     | SEMICOLON'''
-
     def p_optfieldsep(self, p):
         '''optfieldsep : fieldsep
                        |'''
-
     def p_op(self, p):
         '''op : op_one'''
         p[0] = p[1]
@@ -433,7 +428,6 @@ class Parser(object):
 
     def p_string(self, p):
         '''string : STRING'''
-
     def p_error(self, p):
         lexer = p.lexer
         startpos = getattr(lexer, 'startpos', 1)
